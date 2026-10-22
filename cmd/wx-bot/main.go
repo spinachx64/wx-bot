@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"wx-bot/internal/render"
 	"wx-bot/internal/server"
 	"wx-bot/internal/wechat"
 )
@@ -27,10 +28,17 @@ func main() {
 		addr = ":8080"
 	}
 
+	// SKIN_DIR 可选：目录下的 *.json 作为额外皮肤，同名覆盖内置
+	skins, err := render.LoadRegistry(os.Getenv("SKIN_DIR"))
+	if err != nil {
+		log.Error("load skins", "err", err)
+		os.Exit(1)
+	}
+
 	wx := wechat.New(appID, secret)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.New(wx, token, log).Handler(),
+		Handler:           server.New(wx, render.New(skins), token, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

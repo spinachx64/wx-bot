@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"wx-bot/internal/render"
 	"wx-bot/internal/wechat"
 )
 
@@ -46,7 +47,11 @@ func newEnv(t *testing.T, m *mockWX) http.Handler {
 	t.Cleanup(ts.Close)
 	wx := wechat.New("appid", "secret", wechat.WithBaseURL(ts.URL))
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(wx, testToken, log).Handler()
+	skins, err := render.LoadRegistry("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(wx, render.New(skins), testToken, log).Handler()
 }
 
 func call(h http.Handler, method, path, ct string, body io.Reader, auth bool) *httptest.ResponseRecorder {

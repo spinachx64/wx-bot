@@ -12,19 +12,33 @@ import (
 
 // ---------- 草稿管理 ----------
 
-// draftAdd 请求体：{"articles":[...]}，文章字段与微信文档一致
+// draftAdd 请求体：{"articles":[...]}，文章字段与微信文档一致；
+// 文章可用 markdown + skin 代替 content，由服务端渲染
 func (s *Server) draftAdd(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Articles json.RawMessage `json:"articles"`
+		Articles []json.RawMessage `json:"articles"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if len(req.Articles) == 0 || req.Articles[0] != '[' {
+	if len(req.Articles) == 0 {
 		writeError(w, http.StatusBadRequest, "articles must be a non-empty array")
 		return
 	}
-	data, err := s.wx.DraftAdd(r.Context(), req.Articles)
+	for i, a := range req.Articles {
+		out, err := s.renderArticle(a)
+		if err != nil {
+			s.writeArticleError(w, err)
+			return
+		}
+		req.Articles[i] = out
+	}
+	articles, err := marshalNoEscape(req.Articles)
+	if err != nil {
+		s.writeArticleError(w, err)
+		return
+	}
+	data, err := s.wx.DraftAdd(r.Context(), articles)
 	s.writeResult(w, r, data, err)
 }
 
@@ -45,7 +59,12 @@ func (s *Server) draftUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "articles must be an object")
 		return
 	}
-	data, err := s.wx.DraftUpdate(r.Context(), r.PathValue("media_id"), *req.Index, req.Articles)
+	article, err := s.renderArticle(req.Articles)
+	if err != nil {
+		s.writeArticleError(w, err)
+		return
+	}
+	data, err := s.wx.DraftUpdate(r.Context(), r.PathValue("media_id"), *req.Index, article)
 	s.writeResult(w, r, data, err)
 }
 

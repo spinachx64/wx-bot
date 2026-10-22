@@ -1,0 +1,205 @@
+/* 夏日海风 —— 清凉、明亮但不轻飘，适合夏季长文 / 工具教程 / 产品更新。
+ * 所有选择器都以 #nice 开头；固定 px / hex，便于 juice 内联到微信公众号。 */
+
+#nice {
+  font-size: 16px;
+  color: #2f3f46;
+  /* mdnice 容器行高 1.5em、字间距 0，正文疏密由段落层单独定 1.8em/0.04em。 */
+  line-height: 1.5;
+  letter-spacing: 0em;
+  word-spacing: 0em;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  word-break: break-word;
+}
+
+/* 段落：mdnice 用 margin:0 + padding:8px 0 撑段距（padding 不折叠，段距稳定 16px），
+   正文左右不留外边距（贴满版心），行高 1.8em、字间距 0.04em。 */
+#nice p {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 16px;
+  color: #2f3f46;
+  line-height: 1.8;
+  letter-spacing: 0.04em;
+}
+
+/* mdnice 标题不做逐级递减，统一 margin:30px 0 15px、行高 1.5em，层级只靠字号区分。 */
+#nice h1 {
+  margin: 30px 0 15px;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  color: #0891b2;
+  line-height: 1.5;
+}
+
+#nice h2 {
+  margin: 30px 0 15px;
+  padding-left: 12px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #0891b2;
+  border-left: 4px solid #0891b2;
+  line-height: 1.5;
+}
+
+#nice h3 {
+  margin: 30px 0 15px;
+  font-size: 17px;
+  font-weight: bold;
+  color: #0891b2;
+  line-height: 1.5;
+}
+
+#nice h4 {
+  margin: 30px 0 15px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #12323a;
+  line-height: 1.5;
+}
+
+#nice h5 {
+  margin: 30px 0 15px;
+  font-size: 15px;
+  font-weight: bold;
+  color: #12323a;
+  line-height: 1.5;
+}
+
+#nice h6 {
+  margin: 30px 0 15px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #12323a;
+  line-height: 1.5;
+}
+
+/* 引用块：mdnice 用 margin:20px 0、padding:10px 20px，正文左右不留外边距。 */
+#nice blockquote {
+  margin: 20px 0;
+  padding: 10px 20px;
+  border-left: 3px solid #0891b2;
+  background: #eefcff;
+  color: #5f747b;
+  font-size: 15px;
+}
+#nice blockquote p {
+  margin: 0;
+  padding: 8px 0;
+  color: #5f747b;
+}
+/* 引用内含空行时会拆成多个 <p>，给后续段落一个上边距，
+   让空行在公众号里显示出来（juice 会把这条规则内联到第二段起的 p 上）。 */
+#nice blockquote p + p {
+  margin-top: 15px;
+}
+
+/* 无序 / 有序列表：mdnice 用 margin:8px 0、padding-left:25px，正文左右不留外边距。 */
+#nice ul,
+#nice ol {
+  margin: 8px 0;
+  padding-left: 25px;
+  color: #2f3f46;
+}
+/* mdnice 列表项间距 5px，行高 1.8em、字间距 0.04em（与正文段落一致）。 */
+#nice li {
+  margin: 5px 0;
+  line-height: 1.8;
+  letter-spacing: 0.04em;
+}
+
+#nice p code,
+#nice li code,
+#nice h2 code,
+#nice h3 code {
+  margin: 0 2px;
+  padding: 2px 6px;
+  font-size: 14px;
+  color: #0e7490;
+  background: #e6f7fb;
+  border-radius: 4px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+#nice pre {
+  margin: 20px 8px;
+  padding: 16px;
+  overflow-x: auto;
+  background: #18343d;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+#nice pre code {
+  padding: 0;
+  color: #d8edf1;
+  background: transparent;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+#nice table {
+  margin: 20px auto;
+  border-collapse: collapse;
+  font-size: 14px;
+  width: auto;
+}
+#nice th,
+#nice td {
+  padding: 8px 14px;
+  border: 1px solid #c9e5ea;
+}
+#nice th {
+  background: #eaf8fb;
+  font-weight: bold;
+  color: #12323a;
+}
+
+#nice a {
+  color: #0284c7;
+  text-decoration: none;
+  border-bottom: 1px solid #0284c7;
+}
+
+#nice strong {
+  color: #0891b2;
+  font-weight: bold;
+}
+#nice em {
+  font-style: italic;
+  color: #0891b2;
+}
+#nice del {
+  text-decoration: line-through;
+  color: #879aa0;
+}
+#nice hr {
+  margin: 32px 0;
+  border: none;
+  border-top: 1px solid #c9e5ea;
+}
+#nice img {
+  max-width: 100%;
+  border-radius: 6px;
+  display: block;
+  margin: 20px auto;
+}
+
+/* 清凉深色代码块：海蓝底色配低饱和青、绿、浅黄，避免高亮过刺眼。 */
+#nice .hljs-comment,
+#nice .hljs-quote { color: #8da4aa; font-style: italic; }
+#nice .hljs-keyword,
+#nice .hljs-selector-tag { color: #8bd7e8; }
+#nice .hljs-string,
+#nice .hljs-attr { color: #a7d99b; }
+#nice .hljs-number,
+#nice .hljs-literal { color: #e5c889; }
+#nice .hljs-title,
+#nice .hljs-title.function_,
+#nice .hljs-section { color: #7fc7ee; }
+#nice .hljs-type,
+#nice .hljs-class .hljs-title { color: #d8d58f; }
+#nice .hljs-variable,
+#nice .hljs-template-variable { color: #e6a4ad; }
+#nice .hljs-built_in,
+#nice .hljs-builtin-name { color: #8cd9ca; }

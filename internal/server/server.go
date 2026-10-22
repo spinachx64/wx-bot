@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"wx-bot/internal/render"
 	"wx-bot/internal/web"
 	"wx-bot/internal/wechat"
 )
@@ -20,13 +22,14 @@ const (
 )
 
 type Server struct {
-	wx    *wechat.Client
-	token string
-	log   *slog.Logger
+	wx     *wechat.Client
+	render *render.Renderer
+	token  string
+	log    *slog.Logger
 }
 
-func New(wx *wechat.Client, token string, log *slog.Logger) *Server {
-	return &Server{wx: wx, token: token, log: log}
+func New(wx *wechat.Client, rd *render.Renderer, token string, log *slog.Logger) *Server {
+	return &Server{wx: wx, render: rd, token: token, log: log}
 }
 
 // Handler 返回带认证中间件的路由
@@ -55,6 +58,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/publish/{publish_id}", s.publishGet)
 	mux.HandleFunc("GET /api/v1/articles/{article_id}", s.articleGet)
 	mux.HandleFunc("DELETE /api/v1/articles/{article_id}", s.articleDelete)
+
+	// 排版渲染
+	mux.HandleFunc("GET /api/v1/skins", s.skinList)
+	mux.HandleFunc("POST /api/v1/render", s.renderMarkdown)
 
 	// 面板登录时校验 token
 	mux.HandleFunc("GET /api/v1/ping", func(w http.ResponseWriter, _ *http.Request) {
@@ -116,6 +123,17 @@ func (s *Server) writeResult(w http.ResponseWriter, r *http.Request, data []byte
 	}
 	s.log.Error("wechat request failed", "path", r.URL.Path, "err", err)
 	writeError(w, http.StatusBadGateway, "upstream request failed")
+}
+
+// marshalNoEscape 编码 JSON 且不转义 HTML 字符，渲染出的正文原样保留
+func marshalNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {

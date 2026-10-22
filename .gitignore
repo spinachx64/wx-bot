@@ -1,4 +1,5 @@
 /bin/
 /dist/
+/output/
 *.env
 .DS_Store

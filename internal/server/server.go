@@ -3,15 +3,14 @@ package server
 
 import (
 	"bytes"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"wx-bot/internal/render"
+	"wx-bot/internal/store"
 	"wx-bot/internal/web"
 	"wx-bot/internal/wechat"
 )
@@ -22,14 +21,22 @@ const (
 )
 
 type Server struct {
-	wx     *wechat.Client
-	render *render.Renderer
-	token  string
-	log    *slog.Logger
+	store      *store.Store
+	clients    *clientPool
+	render     *render.Renderer
+	adminToken string
+	log        *slog.Logger
 }
 
-func New(wx *wechat.Client, rd *render.Renderer, token string, log *slog.Logger) *Server {
-	return &Server{wx: wx, render: rd, token: token, log: log}
+// New adminToken 为空时管理接口全部拒绝；wxOpts 传给每个租户的 wechat.Client（测试用来换 baseURL）
+func New(st *store.Store, rd *render.Renderer, adminToken string, log *slog.Logger, wxOpts ...wechat.Option) *Server {
+	return &Server{
+		store:      st,
+		clients:    &clientPool{m: map[int64]poolEntry{}, opts: wxOpts},
+		render:     rd,
+		adminToken: adminToken,
+		log:        log,
+	}
 }
 
 // Handler 返回带认证中间件的路由
@@ -63,10 +70,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/skins", s.skinList)
 	mux.HandleFunc("POST /api/v1/render", s.renderMarkdown)
 
-	// 面板登录时校验 token
-	mux.HandleFunc("GET /api/v1/ping", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, []byte(`{"errcode":0,"errmsg":"ok"}`))
-	})
+	// 面板登录、wxctl ping 时校验 token，并返回所属公众号
+	mux.HandleFunc("GET /api/v1/ping", s.whoami)
+
+	// 租户管理（管理员 token）
+	mux.HandleFunc("POST /api/v1/admin/tenants", s.tenantCreate)
+	mux.HandleFunc("GET /api/v1/admin/tenants", s.tenantList)
+	mux.HandleFunc("GET /api/v1/admin/tenants/{tenant}", s.tenantGet)
+	mux.HandleFunc("PATCH /api/v1/admin/tenants/{tenant}", s.tenantUpdate)
+	mux.HandleFunc("DELETE /api/v1/admin/tenants/{tenant}", s.tenantDelete)
+	mux.HandleFunc("POST /api/v1/admin/tenants/{tenant}/tokens", s.tokenCreate)
+	mux.HandleFunc("DELETE /api/v1/admin/tenants/{tenant}/tokens/{token_id}", s.tokenDelete)
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
@@ -76,23 +90,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /", web.Handler())
 
 	return s.auth(mux)
-}
-
-// auth 校验 /api/ 下请求的 Authorization: Bearer <token>，面板静态资源和 /healthz 免认证
-func (s *Server) auth(next http.Handler) http.Handler {
-	want := []byte(s.token)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // ---------- 响应工具 ----------

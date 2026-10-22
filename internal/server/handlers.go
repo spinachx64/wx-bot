@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"wx-bot/internal/store"
 	"wx-bot/internal/wechat"
 )
 
@@ -38,7 +39,7 @@ func (s *Server) draftAdd(w http.ResponseWriter, r *http.Request) {
 		s.writeArticleError(w, err)
 		return
 	}
-	data, err := s.wx.DraftAdd(r.Context(), articles)
+	data, err := s.wx(r).DraftAdd(r.Context(), articles)
 	s.writeResult(w, r, data, err)
 }
 
@@ -64,7 +65,7 @@ func (s *Server) draftUpdate(w http.ResponseWriter, r *http.Request) {
 		s.writeArticleError(w, err)
 		return
 	}
-	data, err := s.wx.DraftUpdate(r.Context(), r.PathValue("media_id"), *req.Index, article)
+	data, err := s.wx(r).DraftUpdate(r.Context(), r.PathValue("media_id"), *req.Index, article)
 	s.writeResult(w, r, data, err)
 }
 
@@ -73,29 +74,29 @@ func (s *Server) draftList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.wx.DraftBatchGet(r.Context(), offset, count, boolParam(r, "no_content"))
+	data, err := s.wx(r).DraftBatchGet(r.Context(), offset, count, boolParam(r, "no_content"))
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) draftCount(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.DraftCount(r.Context())
+	data, err := s.wx(r).DraftCount(r.Context())
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) draftGet(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.DraftGet(r.Context(), r.PathValue("media_id"))
+	data, err := s.wx(r).DraftGet(r.Context(), r.PathValue("media_id"))
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) draftDelete(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.DraftDelete(r.Context(), r.PathValue("media_id"))
+	data, err := s.wx(r).DraftDelete(r.Context(), r.PathValue("media_id"))
 	s.writeResult(w, r, data, err)
 }
 
 // ---------- 发布能力 ----------
 
 func (s *Server) publishSubmit(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.PublishSubmit(r.Context(), r.PathValue("media_id"))
+	data, err := s.wx(r).PublishSubmit(r.Context(), r.PathValue("media_id"))
 	s.writeResult(w, r, data, err)
 }
 
@@ -104,17 +105,17 @@ func (s *Server) publishList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.wx.PublishBatchGet(r.Context(), offset, count, boolParam(r, "no_content"))
+	data, err := s.wx(r).PublishBatchGet(r.Context(), offset, count, boolParam(r, "no_content"))
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) publishGet(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.PublishGet(r.Context(), r.PathValue("publish_id"))
+	data, err := s.wx(r).PublishGet(r.Context(), r.PathValue("publish_id"))
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) articleGet(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.PublishGetArticle(r.Context(), r.PathValue("article_id"))
+	data, err := s.wx(r).PublishGetArticle(r.Context(), r.PathValue("article_id"))
 	s.writeResult(w, r, data, err)
 }
 
@@ -128,7 +129,7 @@ func (s *Server) articleDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	data, err := s.wx.PublishDelete(r.Context(), r.PathValue("article_id"), index)
+	data, err := s.wx(r).PublishDelete(r.Context(), r.PathValue("article_id"), index)
 	s.writeResult(w, r, data, err)
 }
 
@@ -180,7 +181,20 @@ func (s *Server) materialAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "video requires title")
 		return
 	}
-	data, err := s.wx.MaterialAdd(r.Context(), typ, f, title, intro)
+	// 图片类素材按内容去重，同一张图不重复占用永久素材名额
+	if typ == "image" || typ == "thumb" {
+		data, err := s.cachedUpload(r, store.KindMaterial+"-"+typ, f, func() ([]byte, string, error) {
+			data, err := s.wx(r).MaterialAdd(r.Context(), typ, f, "", "")
+			var out struct {
+				MediaID string `json:"media_id"`
+			}
+			json.Unmarshal(data, &out)
+			return data, out.MediaID, err
+		})
+		s.writeResult(w, r, data, err)
+		return
+	}
+	data, err := s.wx(r).MaterialAdd(r.Context(), typ, f, title, intro)
 	s.writeResult(w, r, data, err)
 }
 
@@ -191,7 +205,10 @@ func (s *Server) uploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
-	data, err := s.wx.UploadImage(r.Context(), f)
+	data, err := s.cachedUpload(r, store.KindImage, f, func() ([]byte, string, error) {
+		data, err := s.wx(r).UploadImage(r.Context(), f)
+		return data, "", err
+	})
 	s.writeResult(w, r, data, err)
 }
 
@@ -206,18 +223,18 @@ func (s *Server) materialList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := s.wx.MaterialBatchGet(r.Context(), typ, offset, count)
+	data, err := s.wx(r).MaterialBatchGet(r.Context(), typ, offset, count)
 	s.writeResult(w, r, data, err)
 }
 
 func (s *Server) materialCount(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.MaterialCount(r.Context())
+	data, err := s.wx(r).MaterialCount(r.Context())
 	s.writeResult(w, r, data, err)
 }
 
 // materialGet 图文/视频返回 JSON，其他类型透传文件内容
 func (s *Server) materialGet(w http.ResponseWriter, r *http.Request) {
-	header, data, err := s.wx.MaterialGet(r.Context(), r.PathValue("media_id"))
+	header, data, err := s.wx(r).MaterialGet(r.Context(), r.PathValue("media_id"))
 	if err != nil {
 		s.writeResult(w, r, nil, err)
 		return
@@ -235,6 +252,6 @@ func (s *Server) materialGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) materialDelete(w http.ResponseWriter, r *http.Request) {
-	data, err := s.wx.MaterialDelete(r.Context(), r.PathValue("media_id"))
+	data, err := s.wx(r).MaterialDelete(r.Context(), r.PathValue("media_id"))
 	s.writeResult(w, r, data, err)
 }

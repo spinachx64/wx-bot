@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -13,10 +14,14 @@ import (
 	"testing"
 
 	"wx-bot/internal/render"
+	"wx-bot/internal/store"
 	"wx-bot/internal/wechat"
 )
 
-const testToken = "secret-token"
+const (
+	testToken      = "secret-token"
+	testAdminToken = "admin-token"
+)
 
 // mockWX 模拟微信接口，记录最后一次请求
 type mockWX struct {
@@ -45,13 +50,25 @@ func newEnv(t *testing.T, m *mockWX) http.Handler {
 		w.Write([]byte(`{"errcode":0,"media_id":"MID"}`))
 	}))
 	t.Cleanup(ts.Close)
-	wx := wechat.New("appid", "secret", wechat.WithBaseURL(ts.URL))
+	st, err := store.Open(t.TempDir(), []byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	ctx := context.Background()
+	tn, err := st.CreateTenant(ctx, "default", "wx0123456789abcdef", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ImportToken(ctx, tn.ID, testToken, "test"); err != nil {
+		t.Fatal(err)
+	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	skins, err := render.LoadRegistry("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(wx, render.New(skins), testToken, log).Handler()
+	return New(st, render.New(skins), testAdminToken, log, wechat.WithBaseURL(ts.URL)).Handler()
 }
 
 func call(h http.Handler, method, path, ct string, body io.Reader, auth bool) *httptest.ResponseRecorder {

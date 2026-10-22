@@ -22,7 +22,7 @@ type Meta struct {
 	Skin        string `yaml:"skin"`         // 皮肤
 	SourceURL   string `yaml:"source_url"`   // 阅读原文
 	MediaID     string `yaml:"media_id"`     // 指定要更新的草稿
-	OpenComment bool   `yaml:"open_comment"` // 打开评论
+	OpenComment *bool  `yaml:"open_comment"` // 打开评论，不写时由服务端默认打开
 	FansComment bool   `yaml:"fans_comment"` // 仅粉丝可评论
 }
 

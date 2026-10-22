@@ -193,7 +193,7 @@ func TestParseArticle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Meta.Title != "标题A" || a.Meta.Cover != "c.png" || !a.Meta.OpenComment {
+	if a.Meta.Title != "标题A" || a.Meta.Cover != "c.png" || a.Meta.OpenComment == nil || !*a.Meta.OpenComment {
 		t.Fatalf("meta: %+v", a.Meta)
 	}
 	if !strings.Contains(a.Markdown, "# 正文标题") { // 有 frontmatter 标题时保留正文 H1

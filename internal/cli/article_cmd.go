@@ -124,8 +124,10 @@ func cmdDraft(e *env, args []string) error {
 		"skin":                  first(*skin, m.Skin, e.cfg.Skin),
 		"thumb_media_id":        thumbID,
 		"content_source_url":    m.SourceURL,
-		"need_open_comment":     boolInt(m.OpenComment),
 		"only_fans_can_comment": boolInt(m.FansComment),
+	}
+	if m.OpenComment != nil {
+		article["need_open_comment"] = boolInt(*m.OpenComment)
 	}
 
 	id := first(*mediaID, m.MediaID)

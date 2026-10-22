@@ -52,9 +52,13 @@ func (s *Server) renderArticle(raw json.RawMessage) (json.RawMessage, error) {
 	if err := json.Unmarshal(raw, &art); err != nil {
 		return nil, errBadArticle
 	}
+	// 没有显式指定时默认打开评论
+	if _, ok := art["need_open_comment"]; !ok {
+		art["need_open_comment"] = json.RawMessage("1")
+	}
 	mdRaw, ok := art["markdown"]
 	if !ok {
-		return raw, nil
+		return marshalNoEscape(art)
 	}
 	var md, skin string
 	if err := json.Unmarshal(mdRaw, &md); err != nil {

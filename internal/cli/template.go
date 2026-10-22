@@ -29,7 +29,7 @@ digest: "" # 摘要，不超过 128 个字；留空时微信取正文开头
 cover: cover.jpg # 封面图，相对本文件的路径或 URL（必填）
 skin: %s # 皮肤，留空用服务端默认，wxctl skins 查看可用皮肤
 source_url: "" # 阅读原文链接
-open_comment: false # 打开评论
+open_comment: true # 打开评论（不写也默认打开）
 fans_comment: false # 仅粉丝可评论，需要 open_comment: true
 # media_id: "" # 填上后 wxctl draft 会更新这篇草稿，而不是新建
 ---

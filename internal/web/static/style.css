@@ -201,12 +201,15 @@ img.broken { visibility: hidden; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; font-size: 13px; color: var(--muted); }
 /* ---------- 草稿详情（手机预览 + 操作栏） ---------- */
 .detail { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
+/* 固定为一台手机的大小（390×844），正文在机身内滚动 */
 .phone {
-  justify-self: center; width: 100%; max-width: 414px;
-  background: #fff; color: #333; border-radius: 24px; overflow: hidden;
+  justify-self: center; width: 100%; max-width: 390px;
+  height: min(844px, calc(100vh - 140px)); min-height: 480px;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: #fff; color: #333; border-radius: 24px;
   border: 1px solid var(--line); box-shadow: var(--shadow-lg);
 }
-.phone-bar { height: 44px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #111; border-bottom: 1px solid #eee; background: #f7f7f7; }
+.phone-bar { position: sticky; top: 0; z-index: 1; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #111; border-bottom: 1px solid #eee; background: #f7f7f7; }
 .article-head { padding: 20px 16px 4px; }
 .article-head h1 { font-size: 22px; line-height: 1.4; color: #111; }
 .article-head .byline { margin-top: 10px; font-size: 14px; color: #576b95; }
@@ -230,6 +233,8 @@ img.broken { visibility: hidden; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (max-width: 860px) {
   .detail { grid-template-columns: 1fr; }
+  /* 本身就是手机屏，预览跟随页面滚动，避免嵌套滚动 */
+  .phone { height: auto; min-height: 0; overflow: visible; }
   /* 小屏先看文章，发布按钮固定在底部，信息和删除放在文章后面 */
   .side { position: static; }
   .container:has(.panel.pub) { padding-bottom: 120px; }

@@ -377,7 +377,7 @@ function renderDraft(mediaId, alive) {
       $('#info').innerHTML = `
         <dt>作者</dt><dd>${esc(a.author || '未填写')}</dd>
         <dt>摘要</dt><dd>${esc(a.digest || '未填写')}</dd>
-        <dt>评论</dt><dd>${a.need_open_comment ? (a.only_fans_can_comment ? '仅粉丝可评论' : '已开启') : '未开启'}</dd>
+        <dt>评论</dt><dd>${a.need_open_comment ? (a.only_fans_can_comment ? '已开启，仅粉丝可评论' : '已开启') : '未开启'}</dd>
         <dt>原文链接</dt><dd>${a.content_source_url ? esc(a.content_source_url) : '无'}</dd>`;
       const wx = $('#open-wx');
       wx.hidden = !a.url;

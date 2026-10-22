@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -28,9 +29,11 @@ const usage = `wxctl — wx-bot 命令行
   login                 校验并保存 token（读 --token，否则从标准输入读一行）
   logout                从配置文件删除 token
   config                显示生效的配置
+  config set <键> <值>  设置文章默认值：author、open_comment、fans_comment、skin
   ping                  检查服务和 token
   skins                 列出可用皮肤
-  new    <file.md|->    创建带 frontmatter 的文章模板
+  new    <标题|file.md|-> 创建带 frontmatter 的文章模板，默认值取自配置
+  format <md|->         把普通 markdown 整理成带 frontmatter 的文章（-o 指定输出）
   check  <md|->         离线检查文章，提前发现问题（--strict 警告也算失败）
   render <md|->         渲染 markdown 为 HTML
   draft  <md|->         上传图片、封面，新建或更新草稿
@@ -67,6 +70,7 @@ var commands = map[string]func(*env, []string) error{
 	"draft":   cmdDraft,
 	"drafts":  cmdDrafts,
 	"new":     cmdNew,
+	"format":  cmdFormat,
 	"check":   cmdCheck,
 	"publish": cmdPublish,
 	"status":  cmdStatus,
@@ -276,17 +280,43 @@ func cmdLogout(e *env, args []string) error {
 }
 
 func cmdConfig(e *env, args []string) error {
-	fs := newFlagSet(e, "config", "")
+	fs := newFlagSet(e, "config", "[set <键> <值>]")
+	if len(args) > 0 && args[0] == "set" {
+		// 值为空字符串表示清除，如 wxctl config set author ""
+		pos, err := parseArgs(fs, args[1:], 2)
+		if err != nil {
+			return err
+		}
+		// 先在副本上校验，值不合法时不改动配置文件
+		probe := *e.cfg.file
+		if err := probe.setKey(pos[0], pos[1]); err != nil {
+			return err
+		}
+		if err := e.cfg.Save(func(f *Config) { *f = probe }); err != nil {
+			return err
+		}
+		return e.result(map[string]any{"key": pos[0], "value": pos[1], "config": e.cfg.Path()},
+			fmt.Sprintf("已设置 %s = %q（%s）", pos[0], pos[1], e.cfg.Path()))
+	}
 	if _, err := parseArgs(fs, args, 0); err != nil {
 		return err
 	}
 	c := e.cfg
+	d := c.Defaults
+	boolText := func(b *bool, def string) string {
+		if b == nil {
+			return def
+		}
+		return strconv.FormatBool(*b)
+	}
 	v := map[string]any{
 		"config": c.Path(), "mode": c.Mode, "url": c.URL,
-		"token": maskToken(c.Token), "skin": c.Skin, "cache_dir": c.CacheDir,
+		"token": maskToken(c.Token), "skin": c.Skin, "cache_dir": c.CacheDir, "defaults": d,
 	}
-	text := fmt.Sprintf("config:    %s\nmode:      %s\nurl:       %s\ntoken:     %s\nskin:      %s\ncache_dir: %s",
-		c.Path(), c.Mode, c.URL, first(maskToken(c.Token), "(未设置)"), first(c.Skin, "(服务端默认)"), c.CacheDir)
+	text := fmt.Sprintf("config:    %s\nmode:      %s\nurl:       %s\ntoken:     %s\nskin:      %s\ncache_dir: %s\n"+
+		"defaults:\n  author:       %s\n  open_comment: %s\n  fans_comment: %s",
+		c.Path(), c.Mode, c.URL, first(maskToken(c.Token), "(未设置)"), first(c.Skin, "(服务端默认)"), c.CacheDir,
+		first(d.Author, "(未设置)"), boolText(d.OpenComment, "(未设置，服务端默认 true)"), boolText(d.FansComment, "(未设置，默认 false)"))
 	return e.result(v, text)
 }
 

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,14 +23,69 @@ const (
 
 // Config 配置文件内容。优先级：命令行参数 > 环境变量 > 配置文件 > 默认值
 type Config struct {
-	Mode     string `yaml:"mode,omitempty"`      // local（默认）或 server
-	URL      string `yaml:"url,omitempty"`       // wx-bot 服务地址
-	Token    string `yaml:"token,omitempty"`     // 访问 token
-	Skin     string `yaml:"skin,omitempty"`      // 默认皮肤
-	CacheDir string `yaml:"cache_dir,omitempty"` // 图片上传缓存目录
+	Mode     string   `yaml:"mode,omitempty"`      // local（默认）或 server
+	URL      string   `yaml:"url,omitempty"`       // wx-bot 服务地址
+	Token    string   `yaml:"token,omitempty"`     // 访问 token
+	Skin     string   `yaml:"skin,omitempty"`      // 默认皮肤
+	CacheDir string   `yaml:"cache_dir,omitempty"` // 图片上传缓存目录
+	Defaults Defaults `yaml:"defaults,omitempty"`  // 文章字段默认值
 
 	path string
 	file *Config // 配置文件里的原始值，Save 只写回这一份，避免把环境变量、参数持久化
+}
+
+// Defaults 文章字段默认值：命令行参数和 frontmatter 都没写时使用
+type Defaults struct {
+	Author      string `yaml:"author,omitempty" json:"author"`
+	OpenComment *bool  `yaml:"open_comment,omitempty" json:"open_comment"`
+	FansComment *bool  `yaml:"fans_comment,omitempty" json:"fans_comment"`
+}
+
+// apply 把默认值填进 m 里没写的字段
+func (d Defaults) apply(m *Meta) {
+	if m.Author == "" {
+		m.Author = d.Author
+	}
+	if m.OpenComment == nil {
+		m.OpenComment = d.OpenComment
+	}
+	if m.FansComment == nil {
+		m.FansComment = d.FansComment
+	}
+}
+
+// configKeys wxctl config set 支持的键
+var configKeys = []string{"author", "open_comment", "fans_comment", "skin"}
+
+// setKey 修改一个配置项，value 为空表示清除
+func (c *Config) setKey(key, value string) error {
+	parseBool := func() (*bool, error) {
+		if value == "" {
+			return nil, nil
+		}
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, usageError(fmt.Sprintf("%s must be true or false, got %q", key, value))
+		}
+		return &b, nil
+	}
+	var err error
+	switch key {
+	case "author":
+		if n := utf8.RuneCountInString(value); n > maxAuthor {
+			return usageError(fmt.Sprintf("author 不超过 %d 个字，现在 %d 个", maxAuthor, n))
+		}
+		c.Defaults.Author = value
+	case "open_comment":
+		c.Defaults.OpenComment, err = parseBool()
+	case "fans_comment":
+		c.Defaults.FansComment, err = parseBool()
+	case "skin":
+		c.Skin = value
+	default:
+		return usageError(fmt.Sprintf("unknown key %q, available: %s", key, strings.Join(configKeys, ", ")))
+	}
+	return err
 }
 
 // Flags 全局参数，空字符串表示未指定

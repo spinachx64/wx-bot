@@ -79,6 +79,7 @@ func cmdDraft(e *env, args []string) error {
 	m.Title = first(*title, m.Title)
 	m.Author = first(*author, m.Author)
 	m.Digest = first(*digest, m.Digest)
+	e.cfg.Defaults.apply(m)
 	if m.Title == "" {
 		return usageError("title is required: add frontmatter title, a leading # heading, or --title")
 	}
@@ -124,7 +125,7 @@ func cmdDraft(e *env, args []string) error {
 		"skin":                  first(*skin, m.Skin, e.cfg.Skin),
 		"thumb_media_id":        thumbID,
 		"content_source_url":    m.SourceURL,
-		"only_fans_can_comment": boolInt(m.FansComment),
+		"only_fans_can_comment": boolInt(m.FansComment != nil && *m.FansComment),
 	}
 	if m.OpenComment != nil {
 		article["need_open_comment"] = boolInt(*m.OpenComment)

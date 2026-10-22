@@ -30,10 +30,12 @@ var docs = map[string]cmdDoc{
 		output:   `{"ok":true}`,
 	},
 	"config": {
-		summary:  "显示生效的配置（token 打码）",
-		details:  "合并了参数、环境变量、配置文件后的最终值，用来排查连错服务或 token 没生效。",
-		examples: []string{"wxctl config", "wxctl --mode server config"},
-		output:   `{"ok":true,"config":"...","mode":"local","url":"...","token":"abcd****wxyz","skin":"","cache_dir":"..."}`,
+		summary: "显示生效的配置（token 打码），或设置文章默认值",
+		details: "不带参数：显示合并了参数、环境变量、配置文件后的最终值，用来排查连错服务或 token 没生效。\n" +
+			"config set <键> <值>：写入配置文件。键：author、open_comment、fans_comment（true/false）、skin。\n" +
+			"值传空字符串表示清除。new、format、draft 在参数和 frontmatter 都没写时取这些默认值。",
+		examples: []string{"wxctl config", "wxctl config set author 菠菜", "wxctl config set open_comment true", "wxctl config set author \"\""},
+		output:   `{"ok":true,"config":"...","mode":"local","url":"...","token":"abcd****wxyz","skin":"","cache_dir":"...","defaults":{"author":"","open_comment":null,"fans_comment":null}}`,
 	},
 	"ping": {
 		summary:  "检查服务是否可达、token 是否有效",
@@ -48,10 +50,19 @@ var docs = map[string]cmdDoc{
 	},
 	"new": {
 		summary: "创建带 frontmatter 的文章模板",
-		details: "不覆盖已有文件（除非 --force）。路径没有扩展名时自动补 .md；传 - 输出到标准输出。\n" +
+		details: "参数是标题时，在当前目录生成 <标题>.md；以 .md 结尾或带目录时按路径处理（标题取文件名）。\n" +
+			"作者、评论设置取配置 defaults（wxctl config set 设置）。不覆盖已有文件（除非 --force）；传 - 输出到标准输出。\n" +
 			"模板里的示例文字和 images/example.png 没替换时，check 会报错。",
-		examples: []string{"wxctl new wx/post.md --title 标题 --author 作者", "wxctl new - > post.md"},
-		output:   `{"ok":true,"path":"/abs/post.md","title":"标题"}`,
+		examples: []string{"wxctl new 我的新文章", "wxctl new wx/post.md --title 标题 --author 作者", "wxctl new - > post.md"},
+		output:   `{"ok":true,"path":"/abs/我的新文章.md","title":"我的新文章"}`,
+	},
+	"format": {
+		summary: "把普通 markdown 整理成带完整 frontmatter 的文章",
+		details: "已有 frontmatter 字段保留；没写的取配置 defaults；开头的 # 标题移到 title，否则用文件名。\n" +
+			"封面：--cover > frontmatter cover > 同目录 cover.* > 正文第一张图。\n" +
+			"默认原地改写（可重复执行），-o 写到另一个文件，-o - 输出到标准输出。",
+		examples: []string{"wxctl format notes.md", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format notes.md -o -"},
+		output:   `{"ok":true,"path":"/abs/notes.md","title":"...","cover":"cover.png"}`,
 	},
 	"check": {
 		summary: "提交前检查文章，提前发现问题",
@@ -110,7 +121,7 @@ var docs = map[string]cmdDoc{
 }
 
 // cmdOrder help 里的命令顺序
-var cmdOrder = []string{"login", "logout", "config", "ping", "skins", "new", "check", "render", "draft", "drafts", "publish", "status", "upload"}
+var cmdOrder = []string{"login", "logout", "config", "ping", "skins", "new", "format", "check", "render", "draft", "drafts", "publish", "status", "upload"}
 
 const agentGuide = `# wxctl 使用指南（给 agent）
 
@@ -128,6 +139,7 @@ wxctl 负责读文件、上传图片、组装请求。
 ## 推荐流程
 1. wxctl --json ping                      确认服务和 token 可用
 2. wxctl --json new post.md --title 标题  （新文章）生成模板，再写入正文、封面
+   wxctl --json format notes.md           （已有 markdown）补全 frontmatter，默认值取自配置
 3. wxctl --json check post.md             有 error 就按 line/message 修改，直到 ok:true
 4. wxctl --json draft post.md             新建草稿，记下返回的 media_id
 5. 把 media_id 写进 frontmatter；之后修改再执行 draft 就是更新同一篇

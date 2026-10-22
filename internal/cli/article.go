@@ -23,7 +23,7 @@ type Meta struct {
 	SourceURL   string `yaml:"source_url"`   // 阅读原文
 	MediaID     string `yaml:"media_id"`     // 指定要更新的草稿
 	OpenComment *bool  `yaml:"open_comment"` // 打开评论，不写时由服务端默认打开
-	FansComment bool   `yaml:"fans_comment"` // 仅粉丝可评论
+	FansComment *bool  `yaml:"fans_comment"` // 仅粉丝可评论
 }
 
 // Article 解析后的本地文章

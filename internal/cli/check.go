@@ -111,7 +111,7 @@ func (c *checker) checkMeta(skins []string) {
 			c.add(levelError, c.fieldLine("source_url"), "source_url", "阅读原文必须是 http(s) 链接：%q", m.SourceURL)
 		}
 	}
-	if m.FansComment && m.OpenComment != nil && !*m.OpenComment {
+	if m.FansComment != nil && *m.FansComment && m.OpenComment != nil && !*m.OpenComment {
 		c.add(levelWarn, c.fieldLine("fans_comment"), "fans_comment", "关闭评论时 fans_comment 不生效")
 	}
 	if m.Skin != "" && skins != nil && !contains(skins, m.Skin) {

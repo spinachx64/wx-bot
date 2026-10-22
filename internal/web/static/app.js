@@ -222,7 +222,7 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 
-function setTitle(t) { document.title = t ? `${t} · 公众号助手` : '公众号助手'; }
+function setTitle(t) { document.title = t ? `${t} · 酷卡公众号助手` : '酷卡公众号助手'; }
 
 // 页面渲染失败时的统一错误态，带重试
 function renderError(err, retry) {

@@ -6,6 +6,7 @@ const $ = (sel, el = document) => el.querySelector(sel);
 const view = $('#view');
 const TOKEN_KEY = 'wxbot.token';
 const PAGE_SIZE = 20;
+const MATERIAL_PAGE_SIZE = 18;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // 微信图床同时支持 https，统一升级，避免 https 页面里的混合内容
@@ -239,10 +240,10 @@ async function guard(alive, fn) {
 }
 
 // pager 返回分页条元素，只有一页时返回 null
-function pager(offset, total, go) {
-  if (total <= PAGE_SIZE) return null;
-  const pages = Math.ceil(total / PAGE_SIZE);
-  const cur = Math.floor(offset / PAGE_SIZE) + 1;
+function pager(offset, total, go, pageSize = PAGE_SIZE) {
+  if (total <= pageSize) return null;
+  const pages = Math.ceil(total / pageSize);
+  const cur = Math.floor(offset / pageSize) + 1;
   const el = document.createElement('nav');
   el.className = 'pager';
   el.setAttribute('aria-label', '分页');
@@ -251,7 +252,7 @@ function pager(offset, total, go) {
     <button class="btn sm" type="button" data-pg="1" ${cur >= pages ? 'disabled' : ''}>下一页</button>`;
   el.addEventListener('click', (e) => {
     const b = e.target.closest('[data-pg]');
-    if (b) go(offset + Number(b.dataset.pg) * PAGE_SIZE);
+    if (b) go(offset + Number(b.dataset.pg) * pageSize);
   });
   return el;
 }
@@ -530,7 +531,7 @@ function renderMaterials(type, alive) {
   view.innerHTML = `<div class="page-head"><div><h1>素材库</h1><p class="sub">永久素材，可在文章中直接使用</p></div></div>
     <div class="stats">${statCards(materialCounts)}</div>
     <div id="m-upload"></div>
-    <div id="m-list" aria-busy="true"><div class="grid">${Array.from({ length: 8 }, () =>
+    <div id="m-list" aria-busy="true"><div class="grid">${Array.from({ length: MATERIAL_PAGE_SIZE }, () =>
       '<div class="tile"><div class="thumb skeleton"></div><div class="cap">&nbsp;</div></div>').join('')}</div></div>`;
 
   if (meta.accept) mountUploader($('#m-upload'), type);
@@ -539,7 +540,7 @@ function renderMaterials(type, alive) {
   return guard(alive, async () => {
     const [counts, data] = await Promise.all([
       materialCounts ? Promise.resolve(materialCounts) : api('GET', '/api/v1/materials/count'),
-      api('GET', `/api/v1/materials?type=${type}&offset=${offset}&count=${PAGE_SIZE}`),
+      api('GET', `/api/v1/materials?type=${type}&offset=${offset}&count=${MATERIAL_PAGE_SIZE}`),
     ]);
     if (!alive()) return;
     materialCounts = counts;
@@ -582,7 +583,7 @@ function renderMaterials(type, alive) {
         if (await deleteMaterial(it.media_id, nameOf(it), d)) route();
       }
     });
-    const pg = pager(offset, total, (o) => { materialOffset[type] = o; route(); });
+    const pg = pager(offset, total, (o) => { materialOffset[type] = o; route(); }, MATERIAL_PAGE_SIZE);
     if (pg) view.append(pg);
   });
 }

@@ -396,3 +396,11 @@ body.preview-open { overflow:hidden; }
 }
 @media(max-width:500px) { .list:has(.draft-card) { grid-template-columns:1fr; } .draft-card .body { padding:20px; } .page-head { gap:16px; } }
 #preview-content .panel.pub .hint:not(#pub-status .hint) { display:block; }
+
+/* 素材页：桌面每页 18 张，六列三排，窄屏逐级收起 */
+#m-list .grid { grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }
+#m-list .tile { border-radius:10px; }
+#m-list .tile .cap { padding:6px 8px; font-size:11px; }
+#m-list .tile .del { top:4px; right:4px; min-height:24px; padding:0 5px; font-size:11px; }
+@media(max-width:1000px) { #m-list .grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:600px) { #m-list .grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; } }

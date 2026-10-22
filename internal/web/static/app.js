@@ -327,7 +327,16 @@ const PUBLISH_STATUS = {
 };
 
 // 正文里的微信图片升级为 https；页面已禁止 referrer，图床防盗链不会拦截
-const fixContent = (html) => String(html || '').replace(/(src=["'])http:\/\/((?:\w+\.)?qpic\.cn)/g, '$1https://$2');
+function fixContent(html) {
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  // 微信草稿正文使用 data-src 懒加载；沙箱预览不运行微信脚本，需直接设置 src。
+  doc.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('data-src') || img.getAttribute('src');
+    if (src) img.setAttribute('src', https(src));
+    img.setAttribute('referrerpolicy', 'no-referrer');
+  });
+  return doc.body.innerHTML;
+}
 
 let previewSeq = 0;
 const previewDialog = $('#draft-preview');

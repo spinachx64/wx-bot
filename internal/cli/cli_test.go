@@ -300,6 +300,15 @@ func TestDraftEndToEnd(t *testing.T) {
 		t.Fatalf("article: %v", art)
 	}
 
+	saved, err := LoadArticle(mdPath)
+	if err != nil || saved.Meta.MediaID != "DRAFT1" {
+		t.Fatalf("media_id not saved: %v %v", saved, err)
+	}
+	code, out, errOut = run(t, "", append(args, "draft", mdPath)...)
+	if code != 0 || m.draftPath != "PUT /api/v1/drafts/DRAFT1" {
+		t.Fatalf("automatic update: %d %s %s, %s", code, out, errOut, m.draftPath)
+	}
+
 	// 再次提交走缓存不重复上传；带 --media-id 走更新
 	code, out, errOut = run(t, "", append(args, "draft", mdPath, "--media-id", "MID9")...)
 	if code != 0 {

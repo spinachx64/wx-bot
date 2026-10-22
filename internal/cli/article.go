@@ -33,6 +33,7 @@ type Article struct {
 	Meta     Meta
 	Markdown string // 去掉 frontmatter 的正文
 
+	source    []byte // 原始文件，回写前检测是否被并发修改
 	front     string // frontmatter 原文，检查时用来定位字段行号
 	bodyLine  int    // Markdown 第一行在原文件中的行号
 	titleFrom string // 标题来源：frontmatter / h1 / filename / flag
@@ -64,6 +65,7 @@ func LoadArticle(path string) (*Article, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	a.Path = abs
+	a.source = data
 	if a.Meta.Title == "" {
 		a.Meta.Title = strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
 		a.titleFrom = "filename"

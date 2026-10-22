@@ -60,7 +60,7 @@ func cmdDraft(e *env, args []string) error {
 	skin := fs.String("skin", "", "皮肤")
 	cover := fs.String("cover", "", "封面图路径或 URL（覆盖 frontmatter 的 cover）")
 	thumb := fs.String("thumb", "", "直接使用已有的封面 media_id")
-	mediaID := fs.String("media-id", "", "更新指定草稿，不传则新建")
+	mediaID := fs.String("media-id", "", "更新指定草稿，默认读取 frontmatter media_id，否则新建")
 	index := fs.Int("index", 0, "更新草稿中的第几篇（从 0 开始）")
 	title := fs.String("title", "", "标题")
 	author := fs.String("author", "", "作者")
@@ -143,6 +143,14 @@ func cmdDraft(e *env, args []string) error {
 		}
 	} else if err := e.client.DraftUpdate(e.ctx, id, *index, article); err != nil {
 		return err
+	}
+
+	// 先记录 ID，再处理可选发布；发布失败也能继续更新已保存的草稿。
+	if a.Path != "" && m.MediaID != id {
+		if err := a.saveMediaID(id); err != nil {
+			return fmt.Errorf("draft saved (media_id: %s), but could not write media_id to %s; add it manually before retrying: %w", id, a.Path, err)
+		}
+		e.logf("media_id 已写回 %s", a.Path)
 	}
 
 	v := map[string]any{"action": action, "media_id": id, "title": m.Title, "thumb_media_id": thumbID}

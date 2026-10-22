@@ -51,7 +51,8 @@ wxctl config set author 你的名字   # 设置默认作者
 wxctl new 我的文章                 # 生成 我的文章.md 模板
 wxctl format notes.md             # 或把已有的 md 整理成模板
 wxctl check 我的文章.md            # 提交前检查
-wxctl draft 我的文章.md            # 上传图片并建草稿
+wxctl draft 我的文章.md            # 上传图片并建草稿，media_id 自动写回原文件
+wxctl draft 我的文章.md            # 修改后再次执行，更新同一篇草稿
 wxctl publish <media_id>          # 发布（粉丝可见，不可撤回）
 ```
 

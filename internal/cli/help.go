@@ -85,7 +85,7 @@ var docs = map[string]cmdDoc{
 		details: "流程：check（有错误就停止，什么都不上传）→ 上传正文图片并替换地址 → 上传封面 → 新建/更新草稿。\n" +
 			"有 --media-id 或 frontmatter media_id 时更新，否则新建。新建必须有封面（cover / --cover / --thumb）。\n" +
 			"图片按内容 hash 缓存，重复提交不会重复上传。参数优先于 frontmatter。\n" +
-			"注意：新建后把返回的 media_id 写回 frontmatter，下次提交就会更新而不是再建一篇。",
+			"文件提交成功后自动把 media_id 写回原文件的 frontmatter，下次提交会更新同一篇；标准输入不回写。",
 		examples: []string{
 			"wxctl draft post.md",
 			"wxctl draft post.md --media-id <media_id>",
@@ -141,8 +141,8 @@ wxctl 负责读文件、上传图片、组装请求。
 2. wxctl --json new post.md --title 标题  （新文章）生成模板，再写入正文、封面
    wxctl --json format notes.md           （已有 markdown）补全 frontmatter，默认值取自配置
 3. wxctl --json check post.md             有 error 就按 line/message 修改，直到 ok:true
-4. wxctl --json draft post.md             新建草稿，记下返回的 media_id
-5. 把 media_id 写进 frontmatter；之后修改再执行 draft 就是更新同一篇
+4. wxctl --json draft post.md             新建草稿，media_id 自动写回原文件
+5. 之后修改再执行 draft 就是更新同一篇；stdin 输入需自行保存 media_id
 6. wxctl --json drafts                    需要时核对草稿列表
 
 ## frontmatter 字段

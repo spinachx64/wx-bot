@@ -1,0 +1,13 @@
+/* 草稿正文预览（iframe 内），模拟公众号文章页的版心 */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding: 0 0 24px;
+  background: #fff;
+  color: #333;
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  word-wrap: break-word;
+  overflow: hidden;
+}
+img { max-width: 100% !important; height: auto !important; }
+a { color: #576b95; }

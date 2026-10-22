@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>公众号接口面板</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="login" class="login" hidden>
+  <form id="login-form" class="card">
+    <h1>公众号接口面板</h1>
+    <label for="token-input">访问 Token</label>
+    <input id="token-input" type="password" autocomplete="current-password" required>
+    <button type="submit">登录</button>
+    <p id="login-err" class="err" role="alert"></p>
+  </form>
+</main>
+
+<div id="app" hidden>
+  <header>
+    <strong>公众号接口面板</strong>
+    <nav role="tablist">
+      <button role="tab" data-tab="drafts" aria-selected="true">草稿</button>
+      <button role="tab" data-tab="materials">素材</button>
+      <button role="tab" data-tab="publish">发布</button>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <div class="layout">
+    <section class="ops">
+      <!-- 草稿 -->
+      <div data-panel="drafts">
+        <div class="card">
+          <h2>草稿列表</h2>
+          <div class="row">
+            <label>offset <input id="d-offset" type="number" min="0" value="0"></label>
+            <label>count <input id="d-count" type="number" min="1" max="20" value="20"></label>
+            <label class="chk"><input id="d-nocontent" type="checkbox" checked> no_content</label>
+          </div>
+          <div class="row">
+            <button data-act="draftList">获取列表</button>
+            <button data-act="draftCount" class="ghost">草稿总数</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>单个草稿</h2>
+          <label for="d-mid">media_id</label>
+          <input id="d-mid">
+          <div class="row">
+            <button data-act="draftGet">详情</button>
+            <button data-act="draftPublish">发布</button>
+            <button data-act="draftDelete" class="danger">删除</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>新增 / 更新草稿</h2>
+          <label for="d-body">请求体 JSON</label>
+          <textarea id="d-body" rows="14" spellcheck="false"></textarea>
+          <div class="row">
+            <button data-act="draftTemplate" class="ghost">填入新增模板</button>
+            <button data-act="draftAdd">新增</button>
+          </div>
+          <div class="row">
+            <label>index <input id="d-index" type="number" min="0" value="0"></label>
+            <button data-act="draftUpdate">更新上方 media_id</button>
+          </div>
+          <p class="hint">新增：{"articles":[...]}；更新：{"articles":{...}}，index 由左侧填写。</p>
+        </div>
+      </div>
+
+      <!-- 素材 -->
+      <div data-panel="materials" hidden>
+        <div class="card">
+          <h2>素材列表</h2>
+          <div class="row">
+            <label>type
+              <select id="m-type"><option>image</option><option>video</option><option>voice</option><option>news</option></select>
+            </label>
+            <label>offset <input id="m-offset" type="number" min="0" value="0"></label>
+            <label>count <input id="m-count" type="number" min="1" max="20" value="20"></label>
+          </div>
+          <div class="row">
+            <button data-act="materialList">获取列表</button>
+            <button data-act="materialCount" class="ghost">素材总数</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>上传</h2>
+          <label for="m-file">文件</label>
+          <input id="m-file" type="file">
+          <div class="row">
+            <label>type
+              <select id="m-uptype"><option>image</option><option>thumb</option><option>voice</option><option>video</option></select>
+            </label>
+          </div>
+          <label for="m-title">视频标题 / 简介（仅 video）</label>
+          <input id="m-title" placeholder="title">
+          <input id="m-intro" placeholder="introduction">
+          <div class="row">
+            <button data-act="materialAdd">上传永久素材</button>
+            <button data-act="uploadImage" class="ghost">上传正文图片</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>单个素材</h2>
+          <label for="m-mid">media_id</label>
+          <input id="m-mid">
+          <div class="row">
+            <button data-act="materialGet">获取</button>
+            <button data-act="materialDelete" class="danger">删除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 发布 -->
+      <div data-panel="publish" hidden>
+        <div class="card">
+          <h2>已发布列表</h2>
+          <div class="row">
+            <label>offset <input id="p-offset" type="number" min="0" value="0"></label>
+            <label>count <input id="p-count" type="number" min="1" max="20" value="20"></label>
+            <label class="chk"><input id="p-nocontent" type="checkbox" checked> no_content</label>
+          </div>
+          <button data-act="publishList">获取列表</button>
+        </div>
+        <div class="card">
+          <h2>发布状态</h2>
+          <label for="p-pid">publish_id</label>
+          <input id="p-pid">
+          <button data-act="publishGet">查询</button>
+        </div>
+        <div class="card">
+          <h2>已发布文章</h2>
+          <label for="p-aid">article_id</label>
+          <input id="p-aid">
+          <div class="row">
+            <label>index <input id="p-index" type="number" min="0" value="0"></label>
+          </div>
+          <div class="row">
+            <button data-act="articleGet">详情</button>
+            <button data-act="articleDelete" class="danger">删除</button>
+          </div>
+          <p class="hint">删除时 index 从 1 开始，0 表示删除全部。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="out card" aria-live="polite">
+      <div class="out-head">
+        <h2>响应</h2>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="preview"></div>
+      <pre id="output">（尚无请求）</pre>
+    </section>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

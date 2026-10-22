@@ -1,0 +1,25 @@
+[Unit]
+Description=WeChat official account API service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=wxbot
+Group=wxbot
+WorkingDirectory=/opt/wx-bot/current
+# GZH_APPID / GZH_SECRET / GZH_TOKEN / LISTEN_ADDR
+EnvironmentFile=/opt/project-config/wx-bot/service.env
+ExecStart=/opt/wx-bot/current/wx-bot
+Environment=TZ=Asia/Shanghai
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

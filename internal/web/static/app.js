@@ -171,6 +171,7 @@ async function signIn(t, remember) {
 function signOut(msg) {
   tokenStore.clear();
   token = '';
+  closeDraftPreview();
   $('#app').hidden = true;
   $('#login').hidden = false;
   $('#login-err').textContent = msg || '';
@@ -204,6 +205,7 @@ let routeSeq = 0; // 快速切换页面时丢弃过期请求的结果
 
 function route() {
   if (!token) return;
+  closeDraftPreview();
   const seq = ++routeSeq;
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const [page, arg] = parts;
@@ -275,7 +277,7 @@ function renderDrafts(alive) {
     if (!items.length && draftOffset > 0) { draftOffset = 0; return route(); }
 
     view.innerHTML = `<div class="page-head">
-        <div><h1>草稿箱</h1><p class="sub">${total ? `共 ${total} 篇，点开可以预览和发布` : '暂无草稿'}</p></div>
+        <div><span class="eyebrow">YOUR CONTENT, READY TO GO</span><h1>草稿箱<span class="count-pill">${total}</span></h1><p class="sub">${total ? `共 ${total} 篇草稿 · 点击卡片，直接预览` : '暂无草稿'}</p></div>
         <div class="page-actions"><button class="btn" type="button" id="refresh">刷新</button></div>
       </div><div class="list"></div>`;
     $('#refresh').addEventListener('click', route);
@@ -289,8 +291,8 @@ function renderDrafts(alive) {
     list.innerHTML = items.map((it) => {
       const news = it.content?.news_item || [];
       const a = news[0] || {};
-      return `<a class="draft-card" href="#/drafts/${encodeURIComponent(it.media_id)}">
-        <div class="cover">${a.thumb_url ? `<img src="${esc(https(a.thumb_url))}" alt="" loading="lazy">` : ''}</div>
+      return `<a class="draft-card" data-draft="${esc(it.media_id)}" href="#/drafts/${encodeURIComponent(it.media_id)}">
+        <div class="cover"><span class="cover-label">草稿 · DRAFT</span>${a.thumb_url ? `<img src="${esc(https(a.thumb_url))}" alt="" loading="lazy">` : ''}</div>
         <div class="body">
           <h3>${esc(a.title || '（无标题）')}</h3>
           ${a.digest ? `<p class="digest">${esc(a.digest)}</p>` : ''}
@@ -299,8 +301,15 @@ function renderDrafts(alive) {
             ${a.author ? `<span>${esc(a.author)}</span>` : ''}
             ${news.length > 1 ? `<span class="badge accent">共 ${news.length} 篇</span>` : ''}
           </div>
+          <span class="preview-link">预览文章 <span aria-hidden="true">↗</span></span>
         </div></a>`;
     }).join('');
+    list.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-draft]');
+      if (!card || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      openDraftPreview(card.dataset.draft);
+    });
     const pg = pager(draftOffset, total, (o) => { draftOffset = o; route(); });
     if (pg) view.append(pg);
   });
@@ -319,7 +328,37 @@ const PUBLISH_STATUS = {
 // 正文里的微信图片升级为 https；页面已禁止 referrer，图床防盗链不会拦截
 const fixContent = (html) => String(html || '').replace(/(src=["'])http:\/\/((?:\w+\.)?qpic\.cn)/g, '$1https://$2');
 
-function renderDraft(mediaId, alive) {
+let previewSeq = 0;
+const previewDialog = $('#draft-preview');
+function closeDraftPreview() {
+  ++previewSeq;
+  if (previewDialog.open) previewDialog.close();
+  $('#preview-content').replaceChildren();
+  document.body.classList.remove('preview-open');
+}
+function openDraftPreview(mediaId) {
+  const seq = ++previewSeq;
+  if (!previewDialog.open) previewDialog.showModal();
+  document.body.classList.add('preview-open');
+  renderDraft(mediaId, () => previewDialog.open && seq === previewSeq, $('#preview-content'));
+}
+$('#close-preview').addEventListener('click', closeDraftPreview);
+previewDialog.addEventListener('click', (e) => { if (e.target === previewDialog) closeDraftPreview(); });
+previewDialog.addEventListener('close', () => {
+  ++previewSeq;
+  document.body.classList.remove('preview-open');
+  $('#preview-content').replaceChildren();
+  if (!location.hash.replace(/^#\/?/, '').split('/')[1]) setTitle('草稿箱');
+});
+
+function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
+  const guard = async (alive, fn) => {
+    try { await fn(); } catch (err) {
+      if (!alive() || err.status === 401) return;
+      view.innerHTML = `<div class="empty"><p>${esc(err.message)}</p><button class="btn" type="button">重新加载</button></div>`;
+      $('button', view).onclick = () => renderDraft(mediaId, alive, view);
+    }
+  };
   setTitle('草稿预览');
   view.innerHTML = `<a class="back" href="#/drafts">‹ 返回草稿箱</a>
     <div class="detail"><div class="phone skeleton" style="height:560px"></div><div class="side"></div></div>`;
@@ -364,6 +403,7 @@ function renderDraft(mediaId, alive) {
     const frame = $('iframe', view);
     const show = (i) => {
       idx = i;
+      $('.phone', view).scrollTop = 0;
       const a = news[i];
       $('.article-head h1', view).textContent = a.title || '（无标题）';
       $('.article-head .byline', view).innerHTML =
@@ -390,7 +430,9 @@ function renderDraft(mediaId, alive) {
       if (!doc) return;
       const fit = () => { frame.style.height = doc.documentElement.scrollHeight + 'px'; };
       fit();
-      new ResizeObserver(fit).observe(doc.body);
+      const observer = new ResizeObserver(fit);
+      observer.observe(doc.body);
+      frame.addEventListener('load', () => observer.disconnect(), { once: true });
     });
 
     view.querySelectorAll('[data-idx]').forEach((t) =>
@@ -407,7 +449,9 @@ function renderDraft(mediaId, alive) {
       try {
         await busy(e.target, '删除中…', () => api('DELETE', `/api/v1/drafts/${encodeURIComponent(mediaId)}`));
         toast('草稿已删除');
-        location.hash = '#/drafts';
+        closeDraftPreview();
+        if (location.hash === '#/drafts' || !location.hash) route();
+        else location.hash = '#/drafts';
       } catch (err) { toast(err.message, true); }
     });
     $('#publish').addEventListener('click', async (e) => {

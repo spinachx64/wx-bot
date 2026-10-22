@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 <title>公众号助手</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
@@ -26,10 +26,10 @@
 <div id="app" hidden>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#/drafts"><span class="brand-mark sm" aria-hidden="true">文</span><span>公众号助手</span></a>
+      <a class="brand" href="#/drafts"><span class="brand-mark sm" aria-hidden="true">文</span><span>公众号助手<small>内容工作台</small></span></a>
       <nav class="nav" aria-label="主导航">
-        <a href="#/drafts" data-nav="drafts">草稿</a>
-        <a href="#/materials/image" data-nav="materials">素材</a>
+        <a href="#/drafts" data-nav="drafts"><span aria-hidden="true">▤</span> 草稿箱</a>
+        <a href="#/materials/image" data-nav="materials"><span aria-hidden="true">▧</span> 素材库</a>
       </nav>
       <div class="account">
         <span id="account-name" class="account-name"></span>
@@ -50,6 +50,8 @@
     </div>
   </form>
 </dialog>
+
+<dialog id="draft-preview" class="dialog draft-preview" aria-label="草稿预览"><header class="preview-top"><div><span class="eyebrow">ARTICLE PREVIEW</span><strong>文章预览</strong></div><button type="button" class="btn" id="close-preview" aria-label="关闭预览">关闭 ✕</button></header><div id="preview-content"></div></dialog>
 
 <dialog id="viewer" class="dialog viewer" aria-label="素材详情"></dialog>
 

@@ -39,7 +39,11 @@ const usage = `wxctl — wx-bot 命令行
   status <publish_id>   查询发布状态
   upload <image>        上传正文图片；加 --cover 上传为永久素材
 
-各命令的参数用 wxctl <命令> -h 查看。
+  help [命令|agent]     查看命令详情（参数、示例、JSON 输出）；agent 为自动化调用指南
+
+各命令的详细帮助：wxctl help <命令> 或 wxctl <命令> -h。
+给 agent / 脚本用：先看 wxctl help agent，调用时始终加 --json。
+退出码：0 成功，1 执行失败，2 参数错误。
 `
 
 type env struct {
@@ -83,6 +87,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	fs.BoolVar(&asJSON, "json", false, "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
+			// 主动请求的帮助写 stdout，方便 agent 读取
+			fmt.Fprint(stdout, usage)
 			return 0
 		}
 		return 2
@@ -91,6 +97,13 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if len(rest) == 0 {
 		fs.Usage()
 		return 2
+	}
+	if rest[0] == "help" {
+		return cmdHelp(rest[1:], stdout, stderr)
+	}
+	// <命令> -h 显示带说明、示例和 JSON 结构的完整帮助
+	if _, ok := docs[rest[0]]; ok && wantsHelp(rest[1:]) {
+		return cmdHelp(rest[:1], stdout, stderr)
 	}
 	cmd, ok := commands[rest[0]]
 	if !ok {
@@ -128,6 +141,18 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 1
 	}
 	return 0
+}
+
+func wantsHelp(args []string) bool {
+	for _, a := range args {
+		switch a {
+		case "-h", "-help", "--help", "--h":
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
 }
 
 type usageError string

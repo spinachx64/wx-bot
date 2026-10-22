@@ -473,3 +473,27 @@ func TestDraftBlockedByCheck(t *testing.T) {
 		t.Fatalf("nothing should be sent: uploads=%d covers=%d draft=%v", m.uploads, m.covers, m.lastDraft)
 	}
 }
+
+func TestHelp(t *testing.T) {
+	isolate(t)
+	code, out, _ := run(t, "", "help")
+	if code != 0 || !strings.Contains(out, "help agent") {
+		t.Fatalf("help: %d %s", code, out)
+	}
+	// 每个命令都有详细帮助
+	for _, name := range cmdOrder {
+		code, out, errOut := run(t, "", "help", name)
+		if code != 0 || !strings.Contains(out, "wxctl "+name) {
+			t.Fatalf("help %s: %d %s %s", name, code, out, errOut)
+		}
+	}
+	if code, out, _ := run(t, "", "help", "agent"); code != 0 || !strings.Contains(out, "--json") {
+		t.Fatalf("help agent: %d %s", code, out)
+	}
+	if code, out, _ := run(t, "", "--json", "help", "--json", "draft"); code != 0 || !strings.Contains(out, "wxctl draft") {
+		t.Fatalf("help with flags: %d %s", code, out)
+	}
+	if code, _, _ := run(t, "", "help", "nope"); code != 2 {
+		t.Fatalf("unknown topic code=%d", code)
+	}
+}

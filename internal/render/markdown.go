@@ -184,7 +184,7 @@ func renderHTMLBlock(w util.BufWriter, src []byte, n ast.Node, entering bool) (a
 var codeSpaceRe = regexp.MustCompile(`^ +| {2,}`)
 
 // highlight 微信会压掉 <pre> 里的换行和空格，所以每行包成 display:block 的 span，
-// 行首缩进和连续空格转 &nbsp;。token 输出 hljs-* class，由皮肤 CSS 决定颜色，
+// 行首缩进和连续空格转 &nbsp;。token 输出 hljs-* class，由主题 CSS 决定颜色，
 // 内联后 class 会被清掉。行 span 带 data-line，供 fixPre 下放代码文字色。
 func highlight(code, lang string) string {
 	code = strings.TrimSuffix(code, "\n")
@@ -246,7 +246,7 @@ func highlight(code, lang string) string {
 	return b.String()
 }
 
-// tokenClass 把 chroma token 映射到 highlight.js 的 class，皮肤可以直接沿用 hljs 主题的选择器
+// tokenClass 把 chroma token 映射到 highlight.js 的 class，主题可以直接沿用 hljs 主题的选择器
 func tokenClass(t chroma.TokenType) string {
 	switch {
 	case t.InCategory(chroma.Comment):

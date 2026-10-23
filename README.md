@@ -4,7 +4,7 @@
 
 ## 能做什么
 
-- 用 Markdown 写文章，套用皮肤渲染成公众号排版，一条命令建成草稿或直接发布
+- 用 Markdown 写文章，套用主题渲染成公众号排版，一条命令建成草稿或直接发布
 - 正文图片、封面自动上传和压缩，同一张图不重复上传
 - Web 面板：卡片式草稿箱，点击浮层直接查看手机尺寸预览，关闭后保留列表位置；支持发布、删除，素材库查看总数、上传、删除
 - 多公众号（多租户）：每个公众号独立 token，secret 加密存储，图片互相隔离
@@ -48,6 +48,7 @@ go build -o ~/.local/bin/wxctl ./cmd/wxctl
 
 wxctl login                       # 粘贴访问 token
 wxctl config set author 你的名字   # 设置默认作者
+wxctl config set theme ~/my.css   # 可选：用本地 CSS 主题（每次提交实时上传，服务端不保存）
 
 wxctl new 我的文章                 # 生成 我的文章.md 模板
 wxctl format 我的文章.md           # 整理 frontmatter 并做提交前检查，已有的 md 也适用

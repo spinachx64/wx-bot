@@ -95,7 +95,7 @@ func pngBytes(t *testing.T, w, h int, noise bool) []byte {
 
 // isolate 清掉会影响配置的环境变量
 func isolate(t *testing.T) string {
-	for _, k := range []string{"WXBOT_CONFIG", "WXBOT_MODE", "WXBOT_URL", "WXBOT_TOKEN", "WXBOT_SKIN", "GZH_TOKEN"} {
+	for _, k := range []string{"WXBOT_CONFIG", "WXBOT_MODE", "WXBOT_URL", "WXBOT_TOKEN", "WXBOT_THEME", "GZH_TOKEN"} {
 		t.Setenv(k, "")
 	}
 	return filepath.Join(t.TempDir(), "config.yaml")
@@ -110,13 +110,13 @@ func run(t *testing.T, stdin string, args ...string) (int, string, string) {
 
 func TestConfigPrecedence(t *testing.T) {
 	cfgPath := isolate(t)
-	os.WriteFile(cfgPath, []byte("url: https://file.example\ntoken: filetoken\nskin: a\n"), 0o600)
+	os.WriteFile(cfgPath, []byte("url: https://file.example\ntoken: filetoken\ntheme: a\n"), 0o600)
 
 	c, err := LoadConfig(Flags{Config: cfgPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Mode != ModeLocal || c.URL != "https://file.example" || c.Token != "filetoken" || c.Skin != "a" {
+	if c.Mode != ModeLocal || c.URL != "https://file.example" || c.Token != "filetoken" || c.Theme != "a" {
 		t.Fatalf("file values: %+v", c)
 	}
 
@@ -147,7 +147,7 @@ func TestConfigPrecedence(t *testing.T) {
 func TestLoginSavesOnlyFileValues(t *testing.T) {
 	cfgPath := isolate(t)
 	ts := (&mockAPI{}).server(t)
-	t.Setenv("WXBOT_SKIN", "from-env")
+	t.Setenv("WXBOT_THEME", "from-env")
 
 	code, _, errOut := run(t, "wrong\n", "--config", cfgPath, "--url", ts.URL, "login")
 	if code != 1 {
@@ -270,7 +270,7 @@ func TestDraftEndToEnd(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "images"), 0o755)
 	os.WriteFile(filepath.Join(dir, "images", "a.png"), pngBytes(t, 8, 8, false), 0o644)
 	os.WriteFile(filepath.Join(dir, "cover.png"), pngBytes(t, 9, 9, false), 0o644)
-	md := "---\ntitle: 测试文章\nauthor: 我\ncover: cover.png\nskin: summer-breeze\n---\n正文\n\n![图](images/a.png)\n\n![再次](./images/a.png)\n\n![已是微信](http://mmbiz.qpic.cn/keep)\n"
+	md := "---\ntitle: 测试文章\nauthor: 我\ncover: cover.png\ntheme: summer-breeze\n---\n正文\n\n![图](images/a.png)\n\n![再次](./images/a.png)\n\n![已是微信](http://mmbiz.qpic.cn/keep)\n"
 	mdPath := filepath.Join(dir, "post.md")
 	os.WriteFile(mdPath, []byte(md), 0o644)
 
@@ -296,7 +296,7 @@ func TestDraftEndToEnd(t *testing.T) {
 		strings.Count(body, "http://mmbiz.qpic.cn/img/1") != 2 {
 		t.Fatalf("markdown: %s", body)
 	}
-	if art["title"] != "测试文章" || art["author"] != "我" || art["thumb_media_id"] != "THUMB" || art["skin"] != "summer-breeze" {
+	if art["title"] != "测试文章" || art["author"] != "我" || art["thumb_media_id"] != "THUMB" || art["theme"] != "summer-breeze" {
 		t.Fatalf("article: %v", art)
 	}
 
@@ -439,7 +439,7 @@ func TestNewTemplateFailsCheckUntilFilled(t *testing.T) {
 
 func TestCheckIssues(t *testing.T) {
 	dir := t.TempDir()
-	md := "---\ntitle: " + strings.Repeat("长", 40) + "\ncover: nope.png\nskin: ghost\ntypo_field: 1\nsource_url: ftp://x\n---\n正文 <img src=\"a.png\">\n\n[链接](https://example.com)\n\n```go\n<div>代码里不算</div>\n"
+	md := "---\ntitle: " + strings.Repeat("长", 40) + "\ncover: nope.png\ntheme: ghost\ntypo_field: 1\nsource_url: ftp://x\n---\n正文 <img src=\"a.png\">\n\n[链接](https://example.com)\n\n```go\n<div>代码里不算</div>\n"
 	a, err := ParseArticle([]byte(md), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -448,7 +448,7 @@ func TestCheckIssues(t *testing.T) {
 	want := map[string]string{
 		"超过上限 32":      levelError,
 		"图片不存在":        levelError,
-		"皮肤 \"ghost\"": levelError,
+		"主题 \"ghost\"": levelError,
 		"阅读原文":         levelError,
 		"没有成对出现":       levelError,
 		"未知字段":         levelWarn,
@@ -513,5 +513,43 @@ func TestHelp(t *testing.T) {
 	}
 	if code, _, _ := run(t, "", "help", "nope"); code != 2 {
 		t.Fatalf("unknown topic code=%d", code)
+	}
+}
+
+// config set theme 指向本地 CSS：存绝对路径，draft 时实时读取并以 theme_css 上传
+func TestLocalThemeFile(t *testing.T) {
+	cfgPath := isolate(t)
+	m := &mockAPI{}
+	ts := m.server(t)
+	dir := t.TempDir()
+	cssPath := filepath.Join(dir, "my.css")
+
+	if code, _, _ := run(t, "", "--config", cfgPath, "config", "set", "theme", cssPath); code != 2 {
+		t.Fatalf("missing css file should be rejected, got %d", code)
+	}
+	os.WriteFile(cssPath, []byte("#nice h2 { color: #111111; }"), 0o644)
+	if code, out, errOut := run(t, "", "--config", cfgPath, "config", "set", "theme", cssPath); code != 0 {
+		t.Fatalf("config set: %d %s %s", code, out, errOut)
+	}
+
+	os.WriteFile(filepath.Join(dir, "cover.png"), pngBytes(t, 8, 8, false), 0o644)
+	mdPath := filepath.Join(dir, "post.md")
+	os.WriteFile(mdPath, []byte("---\ntitle: 文章\ncover: cover.png\n---\n正文\n"), 0o644)
+	// 修改 CSS 后再提交，上传的是最新内容
+	os.WriteFile(cssPath, []byte("#nice h2 { color: #222222; }"), 0o644)
+	args := []string{"--config", cfgPath, "--url", ts.URL, "--token", testToken}
+	if code, out, errOut := run(t, "", append(args, "draft", mdPath)...); code != 0 {
+		t.Fatalf("draft: %d %s %s", code, out, errOut)
+	}
+	art := m.lastDraft["articles"].([]any)[0].(map[string]any)
+	if art["theme_css"] != "#nice h2 { color: #222222; }" || art["theme"] != "" {
+		t.Fatalf("article theme: %v / %v", art["theme"], art["theme_css"])
+	}
+
+	// frontmatter 里的相对路径以文章目录为准；文件不存在时 format 报错
+	os.WriteFile(mdPath, []byte("---\ntitle: 文章\ncover: cover.png\ntheme: nope.css\n---\n正文\n"), 0o644)
+	code, out, _ := run(t, "", "--config", cfgPath, "--json", "format", mdPath, "--offline")
+	if code != 1 || !strings.Contains(out, "主题文件不可用") {
+		t.Fatalf("format with missing theme file: %d %s", code, out)
 	}
 }

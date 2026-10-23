@@ -32,21 +32,22 @@ var docs = map[string]cmdDoc{
 	"config": {
 		summary: "显示生效的配置（token 打码），或设置文章默认值",
 		details: "不带参数：显示合并了参数、环境变量、配置文件后的最终值，用来排查连错服务或 token 没生效。\n" +
-			"config set <键> <值>：写入配置文件。键：author、open_comment、fans_comment（true/false）、skin。\n" +
-			"值传空字符串表示清除。new、format、draft 在参数和 frontmatter 都没写时取这些默认值。",
-		examples: []string{"wxctl config", "wxctl config set author 菠菜", "wxctl config set open_comment true", "wxctl config set author \"\""},
-		output:   `{"ok":true,"config":"...","mode":"local","url":"...","token":"abcd****wxyz","skin":"","cache_dir":"...","defaults":{"author":"","open_comment":null,"fans_comment":null}}`,
+			"config set <键> <值>：写入配置文件。键：author、open_comment、fans_comment（true/false）、theme。\n" +
+			"值传空字符串表示清除。new、format、draft 在参数和 frontmatter 都没写时取这些默认值。\n" +
+			"theme 可以是服务端主题名，也可以是本地 .css 文件（存成绝对路径）；CSS 每次提交时实时读取、随请求上传，服务端渲染完即丢弃。",
+		examples: []string{"wxctl config", "wxctl config set author 菠菜", "wxctl config set theme ~/themes/my.css", "wxctl config set author \"\""},
+		output:   `{"ok":true,"config":"...","mode":"local","url":"...","token":"abcd****wxyz","theme":"","cache_dir":"...","defaults":{"author":"","open_comment":null,"fans_comment":null}}`,
 	},
 	"ping": {
 		summary:  "检查服务是否可达、token 是否有效",
 		examples: []string{"wxctl ping"},
 		output:   `{"ok":true,"url":"https://..."}`,
 	},
-	"skins": {
-		summary:  "列出服务端可用皮肤",
-		details:  "文本输出中 * 标记默认皮肤。warnings 是皮肤 CSS 里被跳过的规则。",
-		examples: []string{"wxctl skins"},
-		output:   `{"ok":true,"default":"summer-breeze","skins":[{"name":"summer-breeze","label":"夏日海风","warnings":null}]}`,
+	"themes": {
+		summary:  "列出服务端可用主题",
+		details:  "文本输出中 * 标记默认主题。warnings 是主题 CSS 里被跳过的规则。",
+		examples: []string{"wxctl themes"},
+		output:   `{"ok":true,"default":"summer-breeze","themes":[{"name":"summer-breeze","label":"夏日海风","warnings":null}]}`,
 	},
 	"new": {
 		summary: "创建带 frontmatter 的文章模板",
@@ -63,7 +64,7 @@ var docs = map[string]cmdDoc{
 			"默认原地改写（可重复执行），-o 写到另一个文件，-o - 输出到标准输出（检查结果写 stderr）。\n" +
 			"整理后检查结果，不上传任何东西。错误（error）会导致 draft 失败，必须修；警告（warning）只是提醒。\n" +
 			"检查项：标题/作者/摘要长度（32/16/128 字）、封面和正文图片是否存在且能压到限制以内、\n" +
-			"模板残留、皮肤名、阅读原文链接、``` 是否成对、未知 frontmatter 字段、\n" +
+			"模板残留、主题名、阅读原文链接、``` 是否成对、未知 frontmatter 字段、\n" +
 			"HTML 标签（会按文字显示）、外部链接（公众号里不能点）、正文里重复的一级标题。\n" +
 			"退出码：0 通过；1 有错误（或 --strict 时有警告），文件仍会写出。--no-check 只整理不检查。",
 		examples: []string{"wxctl format notes.md", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format post.md --strict", "wxctl --json format post.md --offline"},
@@ -72,7 +73,7 @@ var docs = map[string]cmdDoc{
 	"render": {
 		summary:  "把 markdown 渲染成公众号 HTML（不建草稿）",
 		details:  "默认不上传图片，本地图片地址原样保留；加 --upload-images 会先上传并替换成微信地址。\n文本模式只输出 HTML，方便重定向到文件。",
-		examples: []string{"wxctl render post.md > post.html", "wxctl render post.md --skin summer-breeze --upload-images"},
+		examples: []string{"wxctl render post.md > post.html", "wxctl render post.md --theme summer-breeze --upload-images"},
 		output:   `{"ok":true,"title":"...","html":"<section ...>"}`,
 	},
 	"draft": {
@@ -116,11 +117,11 @@ var docs = map[string]cmdDoc{
 }
 
 // cmdOrder help 里的命令顺序
-var cmdOrder = []string{"login", "logout", "config", "ping", "skins", "new", "format", "render", "draft", "drafts", "publish", "status", "upload"}
+var cmdOrder = []string{"login", "logout", "config", "ping", "themes", "new", "format", "render", "draft", "drafts", "publish", "status", "upload"}
 
 const agentGuide = `# wxctl 使用指南（给 agent）
 
-wxctl 把本地 markdown 发到微信公众号草稿箱。服务端负责渲染皮肤和调用微信接口，
+wxctl 把本地 markdown 发到微信公众号草稿箱。服务端负责渲染主题和调用微信接口，
 wxctl 负责读文件、上传图片、组装请求。
 
 ## 调用约定
@@ -142,7 +143,7 @@ wxctl 负责读文件、上传图片、组装请求。
 
 ## frontmatter 字段
 title（≤32 字）、author（≤16 字）、digest（≤128 字）、cover（封面路径或 URL，新建必填）、
-skin、source_url、media_id、open_comment、fans_comment。
+theme（主题名，或本地 .css 文件，相对路径以文章所在目录为准）、source_url、media_id、open_comment、fans_comment。
 没有 title 时用正文开头的 # 标题（并从正文移除），再没有就用文件名。
 
 ## 写作注意

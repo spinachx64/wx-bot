@@ -103,9 +103,9 @@ type pseudoSpan struct {
 	style  *styleSet
 }
 
-// inline 把皮肤 CSS 按 specificity + 书写顺序内联到 style 属性，
+// inline 把主题 CSS 按 specificity + 书写顺序内联到 style 属性，
 // 元素原有的 style（如表格对齐）优先级最高；::before/::after 展开成 span
-func inline(root *html.Node, s *Skin) {
+func inline(root *html.Node, s *Theme) {
 	var nodes []*html.Node
 	var collect func(n *html.Node)
 	collect = func(n *html.Node) {

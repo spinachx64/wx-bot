@@ -9,25 +9,27 @@ import (
 	"wx-bot/internal/render"
 )
 
-// skinList 返回可用皮肤及其配置
-func (s *Server) skinList(w http.ResponseWriter, _ *http.Request) {
+// themeList 返回可用主题及其配置
+func (s *Server) themeList(w http.ResponseWriter, _ *http.Request) {
 	data, _ := json.Marshal(map[string]any{
-		"default": render.DefaultSkin,
-		"skins":   s.render.Skins().List(),
+		"default": render.DefaultTheme,
+		"themes":  s.render.Themes().List(),
 	})
 	writeJSON(w, http.StatusOK, data)
 }
 
-// renderMarkdown 请求体：{"markdown":"...","skin":"summer-breeze"}，返回 {"html":"..."}
+// renderMarkdown 请求体：{"markdown":"...","theme":"summer-breeze"}，返回 {"html":"..."}。
+// 带 theme_css 时用这份 CSS 渲染（忽略 theme），只在本次请求内使用，不落盘
 func (s *Server) renderMarkdown(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Markdown string `json:"markdown"`
-		Skin     string `json:"skin"`
+		Theme    string `json:"theme"`
+		ThemeCSS string `json:"theme_css"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	out, err := s.render.Render(req.Markdown, req.Skin)
+	out, err := s.renderWith(req.Markdown, req.Theme, req.ThemeCSS)
 	if err != nil {
 		s.writeRenderError(w, err)
 		return
@@ -36,8 +38,20 @@ func (s *Server) renderMarkdown(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, data)
 }
 
+// renderWith 有自定义 CSS 时用它，否则按主题名
+func (s *Server) renderWith(md, theme, css string) (string, error) {
+	if css == "" {
+		return s.render.Render(md, theme)
+	}
+	t, err := render.ParseTheme("custom", []byte(css))
+	if err != nil {
+		return "", err
+	}
+	return s.render.RenderWith(md, t)
+}
+
 func (s *Server) writeRenderError(w http.ResponseWriter, err error) {
-	if errors.Is(err, render.ErrUnknownSkin) {
+	if errors.Is(err, render.ErrUnknownTheme) || errors.Is(err, render.ErrBadCustomCSS) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -45,7 +59,7 @@ func (s *Server) writeRenderError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "render failed")
 }
 
-// renderArticle 文章里带 markdown 字段时渲染成 content，并去掉 markdown/skin，
+// renderArticle 文章里带 markdown 字段时渲染成 content，并去掉 markdown/theme，
 // 其余字段原样透传给微信
 func (s *Server) renderArticle(raw json.RawMessage) (json.RawMessage, error) {
 	var art map[string]json.RawMessage
@@ -60,16 +74,18 @@ func (s *Server) renderArticle(raw json.RawMessage) (json.RawMessage, error) {
 	if !ok {
 		return marshalNoEscape(art)
 	}
-	var md, skin string
+	var md, theme, css string
 	if err := json.Unmarshal(mdRaw, &md); err != nil {
 		return nil, fmt.Errorf("%w: markdown must be a string", errBadArticle)
 	}
-	if v, ok := art["skin"]; ok {
-		if err := json.Unmarshal(v, &skin); err != nil {
-			return nil, fmt.Errorf("%w: skin must be a string", errBadArticle)
+	for key, dst := range map[string]*string{"theme": &theme, "theme_css": &css} {
+		if v, ok := art[key]; ok {
+			if err := json.Unmarshal(v, dst); err != nil {
+				return nil, fmt.Errorf("%w: %s must be a string", errBadArticle, key)
+			}
 		}
 	}
-	out, err := s.render.Render(md, skin)
+	out, err := s.renderWith(md, theme, css)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +95,8 @@ func (s *Server) renderArticle(raw json.RawMessage) (json.RawMessage, error) {
 	}
 	art["content"] = content
 	delete(art, "markdown")
-	delete(art, "skin")
+	delete(art, "theme")
+	delete(art, "theme_css")
 	return marshalNoEscape(art)
 }
 

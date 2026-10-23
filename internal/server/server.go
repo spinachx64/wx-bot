@@ -67,7 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/articles/{article_id}", s.articleDelete)
 
 	// 排版渲染
-	mux.HandleFunc("GET /api/v1/skins", s.skinList)
+	mux.HandleFunc("GET /api/v1/themes", s.themeList)
 	mux.HandleFunc("POST /api/v1/render", s.renderMarkdown)
 
 	// 面板登录、wxctl ping 时校验 token，并返回所属公众号

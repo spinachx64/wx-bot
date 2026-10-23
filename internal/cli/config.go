@@ -26,7 +26,7 @@ type Config struct {
 	Mode     string   `yaml:"mode,omitempty"`      // local（默认）或 server
 	URL      string   `yaml:"url,omitempty"`       // wx-bot 服务地址
 	Token    string   `yaml:"token,omitempty"`     // 访问 token
-	Skin     string   `yaml:"skin,omitempty"`      // 默认皮肤
+	Theme    string   `yaml:"theme,omitempty"`     // 默认主题
 	CacheDir string   `yaml:"cache_dir,omitempty"` // 图片上传缓存目录
 	Defaults Defaults `yaml:"defaults,omitempty"`  // 文章字段默认值
 
@@ -55,7 +55,7 @@ func (d Defaults) apply(m *Meta) {
 }
 
 // configKeys wxctl config set 支持的键
-var configKeys = []string{"author", "open_comment", "fans_comment", "skin"}
+var configKeys = []string{"author", "open_comment", "fans_comment", "theme"}
 
 // setKey 修改一个配置项，value 为空表示清除
 func (c *Config) setKey(key, value string) error {
@@ -80,8 +80,19 @@ func (c *Config) setKey(key, value string) error {
 		c.Defaults.OpenComment, err = parseBool()
 	case "fans_comment":
 		c.Defaults.FansComment, err = parseBool()
-	case "skin":
-		c.Skin = value
+	case "theme":
+		// 本地 CSS 存成绝对路径，在任何目录执行都能找到；内容每次提交时实时读取
+		if isThemeFile(value) {
+			abs, aerr := filepath.Abs(themePath(value, ""))
+			if aerr != nil {
+				return aerr
+			}
+			if _, rerr := readThemeCSS(abs); rerr != nil {
+				return usageError(rerr.Error())
+			}
+			value = abs
+		}
+		c.Theme = value
 	default:
 		return usageError(fmt.Sprintf("unknown key %q, available: %s", key, strings.Join(configKeys, ", ")))
 	}
@@ -136,7 +147,7 @@ func LoadConfig(f Flags) (*Config, error) {
 		// 服务器上可以直接复用 wx-bot 服务自己的 token
 		c.Token = os.Getenv("GZH_TOKEN")
 	}
-	c.Skin = first(os.Getenv("WXBOT_SKIN"), c.Skin)
+	c.Theme = first(os.Getenv("WXBOT_THEME"), c.Theme)
 	if c.CacheDir == "" {
 		c.CacheDir = filepath.Join(filepath.Dir(path), "cache")
 	}

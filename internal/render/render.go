@@ -1,5 +1,5 @@
 // Package render 把 Markdown 渲染成带内联样式、可直接提交给公众号的 HTML。
-// 结构规则移植自 md2media 的 render.mjs，样式完全由皮肤 CSS 决定。
+// 结构规则移植自 md2media 的 render.mjs，样式完全由主题 CSS 决定。
 package render
 
 import (
@@ -16,11 +16,11 @@ import (
 )
 
 type Renderer struct {
-	md    goldmark.Markdown
-	skins *Registry
+	md     goldmark.Markdown
+	themes *Registry
 }
 
-func New(skins *Registry) *Renderer {
+func New(themes *Registry) *Renderer {
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			// 微信不认 align 属性，表格对齐直接输出成 text-align
@@ -34,17 +34,22 @@ func New(skins *Registry) *Renderer {
 			renderer.WithNodeRenderers(util.Prioritized(nodeRenderer{}, 100)),
 		),
 	)
-	return &Renderer{md: md, skins: skins}
+	return &Renderer{md: md, themes: themes}
 }
 
-func (r *Renderer) Skins() *Registry { return r.skins }
+func (r *Renderer) Themes() *Registry { return r.themes }
 
-// Render 用指定皮肤渲染，skin 为空时用默认皮肤
-func (r *Renderer) Render(markdown, skin string) (string, error) {
-	s, err := r.skins.Get(skin)
+// Render 用指定主题渲染，theme 为空时用默认主题
+func (r *Renderer) Render(markdown, theme string) (string, error) {
+	s, err := r.themes.Get(theme)
 	if err != nil {
 		return "", err
 	}
+	return r.RenderWith(markdown, s)
+}
+
+// RenderWith 用给定主题渲染，自定义 CSS 先用 ParseTheme 解析
+func (r *Renderer) RenderWith(markdown string, s *Theme) (string, error) {
 	var buf bytes.Buffer
 	if err := r.md.Convert([]byte(normalizeEmphasis(markdown)), &buf); err != nil {
 		return "", err

@@ -19,7 +19,7 @@ const (
 
 // renderFront 生成带注释的 frontmatter，字段说明写在 YAML 注释里。
 // 评论设置没写时按服务端默认（打开评论、不限粉丝）显式写出来
-func renderFront(m Meta, skin string) string {
+func renderFront(m Meta, theme string) string {
 	q := func(s string) string {
 		b, _ := yaml.Marshal(s)
 		return strings.TrimSpace(string(b))
@@ -35,20 +35,20 @@ title: %s # 标题，不超过 32 个字
 author: %s # 作者，不超过 16 个字
 digest: %s # 摘要，不超过 128 个字；留空时微信取正文开头
 cover: %s # 封面图，相对本文件的路径或 URL（必填）
-skin: %s # 皮肤，留空用服务端默认，wxctl skins 查看可用皮肤
+theme: %s # 主题，留空用服务端默认，wxctl themes 查看可用主题
 source_url: %s # 阅读原文链接
 open_comment: %t # 打开评论
 fans_comment: %t # 仅粉丝可评论，需要 open_comment: true
 %s
 ---
-`, q(m.Title), q(m.Author), q(m.Digest), q(m.Cover), q(skin), q(m.SourceURL), open, fans, mediaID)
+`, q(m.Title), q(m.Author), q(m.Digest), q(m.Cover), q(theme), q(m.SourceURL), open, fans, mediaID)
 }
 
 // articleTemplate 新文章模板：frontmatter 取配置里的默认值，正文是示例文字
-func articleTemplate(title, author string, d Defaults, skin string) string {
+func articleTemplate(title, author string, d Defaults, theme string) string {
 	m := Meta{Title: title, Author: author, Cover: "cover.jpg"}
 	d.apply(&m)
-	return renderFront(m, skin) + fmt.Sprintf(`
+	return renderFront(m, theme) + fmt.Sprintf(`
 %s
 
 ## 小标题
@@ -110,7 +110,7 @@ func cmdNew(e *env, args []string) error {
 	}
 	arg := pos[0]
 	if arg == "-" {
-		fmt.Fprint(e.out, articleTemplate(first(*title, "标题"), *author, e.cfg.Defaults, e.cfg.Skin))
+		fmt.Fprint(e.out, articleTemplate(first(*title, "标题"), *author, e.cfg.Defaults, e.cfg.Theme))
 		return nil
 	}
 
@@ -126,7 +126,7 @@ func cmdNew(e *env, args []string) error {
 		path = fileNameFor(arg) + ".md"
 	}
 
-	if err := writeNew(path, articleTemplate(t, *author, e.cfg.Defaults, e.cfg.Skin), *force); err != nil {
+	if err := writeNew(path, articleTemplate(t, *author, e.cfg.Defaults, e.cfg.Theme), *force); err != nil {
 		return err
 	}
 	abs, _ := filepath.Abs(path)
@@ -154,7 +154,7 @@ func cmdFormat(e *env, args []string) error {
 	fs := newFlagSet(e, "format", "<file.md|-> [-o 输出文件|-] [--cover 封面] [--offline] [--strict] [--no-check]")
 	out := fs.String("o", "", "输出到另一个文件，- 为标准输出；默认原地改写")
 	cover := fs.String("cover", "", "封面图，默认取同目录 cover.* 或正文第一张图")
-	offline := fs.Bool("offline", false, "检查时不连服务端（跳过皮肤检查）")
+	offline := fs.Bool("offline", false, "检查时不连服务端（跳过主题检查）")
 	strict := fs.Bool("strict", false, "有警告也返回失败")
 	noCheck := fs.Bool("no-check", false, "只整理，不检查")
 	pos, err := parseArgs(fs, args, 1)
@@ -168,7 +168,7 @@ func cmdFormat(e *env, args []string) error {
 	m := a.Meta
 	e.cfg.Defaults.apply(&m)
 	m.Cover = first(*cover, m.Cover, findCover(a))
-	text := renderFront(m, first(m.Skin, e.cfg.Skin)) + "\n" + strings.TrimLeft(a.Markdown, "\r\n")
+	text := renderFront(m, first(m.Theme, e.cfg.Theme)) + "\n" + strings.TrimLeft(a.Markdown, "\r\n")
 
 	// 检查整理后的内容，行号对应写出的文件
 	issues := []Issue{}
@@ -177,11 +177,11 @@ func cmdFormat(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		var skins []string
+		var themes []string
 		if !*offline && e.cfg.Token != "" {
-			skins = e.fetchSkins(e.ctx)
+			themes = e.fetchThemes(e.ctx)
 		}
-		if found := CheckArticle(fa, skins); found != nil {
+		if found := CheckArticle(fa, themes); found != nil {
 			issues = found // 没问题时保持空切片，JSON 输出 [] 而不是 null
 		}
 	}

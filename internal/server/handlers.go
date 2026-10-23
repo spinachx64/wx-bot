@@ -14,7 +14,7 @@ import (
 // ---------- 草稿管理 ----------
 
 // draftAdd 请求体：{"articles":[...]}，文章字段与微信文档一致；
-// 文章可用 markdown + skin 代替 content，由服务端渲染
+// 文章可用 markdown + theme 代替 content，由服务端渲染
 func (s *Server) draftAdd(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Articles []json.RawMessage `json:"articles"`

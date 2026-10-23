@@ -14,31 +14,31 @@ import (
 )
 
 func main() {
-	skins, err := render.LoadRegistry("")
+	themes, err := render.LoadRegistry("")
 	if err != nil {
 		js.Global().Set("wxRenderError", err.Error())
 		return
 	}
-	r := render.New(skins)
+	r := render.New(themes)
 
-	// wxSkins() → JSON 字符串 {"default":"...","skins":[{name,label}]}
-	js.Global().Set("wxSkins", js.FuncOf(func(js.Value, []js.Value) any {
+	// wxThemes() → JSON 字符串 {"default":"...","themes":[{name,label}]}
+	js.Global().Set("wxThemes", js.FuncOf(func(js.Value, []js.Value) any {
 		type item struct {
 			Name  string `json:"name"`
 			Label string `json:"label"`
 		}
 		list := []item{}
-		for _, s := range skins.List() {
+		for _, s := range themes.List() {
 			list = append(list, item{s.Name, s.Label})
 		}
-		data, _ := json.Marshal(map[string]any{"default": render.DefaultSkin, "skins": list})
+		data, _ := json.Marshal(map[string]any{"default": render.DefaultTheme, "themes": list})
 		return string(data)
 	}))
 
-	// wxRender(markdown, skin) → {html} 或 {error}
+	// wxRender(markdown, theme) → {html} 或 {error}
 	js.Global().Set("wxRender", js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if len(args) < 2 {
-			return map[string]any{"error": "wxRender(markdown, skin)"}
+			return map[string]any{"error": "wxRender(markdown, theme)"}
 		}
 		out, err := r.Render(args[0].String(), args[1].String())
 		if err != nil {

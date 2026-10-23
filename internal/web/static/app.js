@@ -556,7 +556,7 @@ async function watchPublish(mediaId, alive) {
 // 免登录。正文和所选主题存在本机浏览器里，刷新不丢；渲染在浏览器里用 WASM 完成，和 wxctl 建草稿的效果一致
 
 const WRITE_KEY = 'wxbot.write.md';
-const SKIN_KEY = 'wxbot.write.skin';
+const THEME_KEY = 'wxbot.write.theme';
 const local = {
   get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -624,18 +624,18 @@ function loadRenderer() {
   return rendererReady;
 }
 
-let skinsCache = null; // { default, skins: [{name, label}] }
-async function loadSkins() {
-  if (!skinsCache) {
+let themesCache = null; // { default, themes: [{name, label}] }
+async function loadThemes() {
+  if (!themesCache) {
     await loadRenderer();
-    skinsCache = JSON.parse(window.wxSkins());
+    themesCache = JSON.parse(window.wxThemes());
   }
-  return skinsCache;
+  return themesCache;
 }
 
-async function renderMd(markdown, skin) {
+async function renderMd(markdown, theme) {
   await loadRenderer();
-  const res = window.wxRender(markdown, skin);
+  const res = window.wxRender(markdown, theme);
   if (res.error) throw new Error(res.error);
   return res.html || '';
 }
@@ -646,8 +646,8 @@ function renderWrite(alive) {
       <div><span class="eyebrow">WRITE · FORMAT · PASTE</span><h1>写作</h1>
         <p class="sub">输入 Markdown，选择主题，一键复制后到公众号后台粘贴</p></div>
       <div class="page-actions write-actions">
-        <label class="sr-only" for="skin-select">排版主题</label>
-        <select id="skin-select" class="select" disabled><option>加载主题…</option></select>
+        <label class="sr-only" for="theme-select">排版主题</label>
+        <select id="theme-select" class="select" disabled><option>加载主题…</option></select>
         <button class="btn" type="button" id="open-gallery">主题预览</button>
         <button class="btn primary" type="button" id="copy-html" disabled>复制到公众号</button>
       </div>
@@ -668,7 +668,7 @@ function renderWrite(alive) {
     </div>`;
 
   const input = $('#md-input');
-  const select = $('#skin-select');
+  const select = $('#theme-select');
   const copyBtn = $('#copy-html');
   const frame = $('iframe', view);
   const state = $('#render-state');
@@ -720,7 +720,7 @@ function renderWrite(alive) {
     input.value = SAMPLE_MD;
     input.dispatchEvent(new Event('input'));
   });
-  select.addEventListener('change', () => { local.set(SKIN_KEY, select.value); refresh(); });
+  select.addEventListener('change', () => { local.set(THEME_KEY, select.value); refresh(); });
   copyBtn.addEventListener('click', () => copyRich(html));
   $('#open-gallery').addEventListener('click', () => openGallery(select.value, (name) => {
     select.value = name;
@@ -729,11 +729,11 @@ function renderWrite(alive) {
   stat();
 
   return guard(alive, async () => {
-    const data = await loadSkins();
+    const data = await loadThemes();
     if (!alive()) return;
-    const saved = local.get(SKIN_KEY);
-    const names = data.skins.map((s) => s.name);
-    select.innerHTML = data.skins.map((s) => `<option value="${esc(s.name)}">${esc(s.label)}</option>`).join('');
+    const saved = local.get(THEME_KEY);
+    const names = data.themes.map((s) => s.name);
+    select.innerHTML = data.themes.map((s) => `<option value="${esc(s.name)}">${esc(s.label)}</option>`).join('');
     select.value = names.includes(saved) ? saved : data.default;
     select.disabled = false;
     await refresh();
@@ -773,7 +773,7 @@ async function copyRich(html) {
 // ---------- 主题预览：同一篇示例套用全部主题 ----------
 
 const galleryDialog = $('#theme-gallery');
-const galleryCache = new Map(); // skin -> 示例渲染结果
+const galleryCache = new Map(); // theme -> 示例渲染结果
 let gallerySeq = 0;
 
 function closeGallery() {
@@ -790,28 +790,28 @@ async function openGallery(current, onPick) {
   body.innerHTML = '<div class="gallery-grid" aria-busy="true"></div>';
   galleryDialog.showModal();
   let data;
-  try { data = await loadSkins(); } catch (err) {
+  try { data = await loadThemes(); } catch (err) {
     if (seq === gallerySeq) body.innerHTML = `<div class="empty"><p>${esc(err.message)}</p></div>`;
     return;
   }
   if (seq !== gallerySeq) return;
   const grid = $('.gallery-grid', body);
-  grid.innerHTML = data.skins.map((s) => `<button type="button" class="theme-card" data-skin="${esc(s.name)}"
+  grid.innerHTML = data.themes.map((s) => `<button type="button" class="theme-card" data-theme-name="${esc(s.name)}"
       aria-pressed="${s.name === current}" aria-label="选用主题 ${esc(s.label)}">
       <div class="theme-shot"><iframe tabindex="-1" aria-hidden="true" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></div>
       <div class="theme-name"><strong>${esc(s.label)}</strong><span class="muted mono">${esc(s.name)}</span>
         ${s.name === current ? '<span class="badge accent">当前</span>' : ''}</div></button>`).join('');
   grid.removeAttribute('aria-busy');
   grid.addEventListener('click', (e) => {
-    const card = e.target.closest('[data-skin]');
+    const card = e.target.closest('[data-theme-name]');
     if (!card) return;
-    onPick(card.dataset.skin);
+    onPick(card.dataset.themeName);
     closeGallery();
     toast(`已切换为「${card.querySelector('strong').textContent}」`);
   });
   // 缩略图并发渲染，失败的卡片只显示提示，不影响其他主题
-  await Promise.all(data.skins.map(async (s) => {
-    const frame = grid.querySelector(`[data-skin="${CSS.escape(s.name)}"] iframe`);
+  await Promise.all(data.themes.map(async (s) => {
+    const frame = grid.querySelector(`[data-theme-name="${CSS.escape(s.name)}"] iframe`);
     try {
       if (!galleryCache.has(s.name)) galleryCache.set(s.name, await renderMd(SAMPLE_MD, s.name));
       if (seq !== gallerySeq) return;

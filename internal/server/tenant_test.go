@@ -57,12 +57,12 @@ func newMultiEnv(t *testing.T) *multiEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	skins, err := render.LoadRegistry("")
+	themes, err := render.LoadRegistry("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	e.h = New(st, render.New(skins), testAdminToken, log, wechat.WithBaseURL(ts.URL)).Handler()
+	e.h = New(st, render.New(themes), testAdminToken, log, wechat.WithBaseURL(ts.URL)).Handler()
 	return e
 }
 

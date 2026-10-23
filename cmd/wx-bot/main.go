@@ -21,7 +21,7 @@ import (
 //	WXBOT_ADMIN_TOKEN  管理员 token，用于 /api/v1/admin/；不设则管理接口全部拒绝
 //	DATA_DIR           数据目录（wx-bot.db 和 uploads/），默认 ./data
 //	LISTEN_ADDR        监听地址，默认 :8080
-//	SKIN_DIR           额外皮肤目录，可选
+//	THEME_DIR           额外主题目录，可选
 //	GZH_APPID / GZH_SECRET / GZH_TOKEN  旧的单租户配置，启动时迁移为 default 租户
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -56,15 +56,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	skins, err := render.LoadRegistry(os.Getenv("SKIN_DIR"))
+	themes, err := render.LoadRegistry(os.Getenv("THEME_DIR"))
 	if err != nil {
-		log.Error("load skins", "err", err)
+		log.Error("load themes", "err", err)
 		os.Exit(1)
 	}
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.New(st, render.New(skins), adminToken, log).Handler(),
+		Handler:           server.New(st, render.New(themes), adminToken, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

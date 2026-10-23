@@ -140,11 +140,16 @@ func (c *Client) AddMaterial(ctx context.Context, typ, name string, data []byte)
 	return out.MediaID, nil
 }
 
-func (c *Client) Render(ctx context.Context, markdown, skin string) (string, error) {
+// Render css 非空时用这份自定义 CSS 渲染，theme 被忽略
+func (c *Client) Render(ctx context.Context, markdown, theme, css string) (string, error) {
 	var out struct {
 		HTML string `json:"html"`
 	}
-	err := c.sendJSON(ctx, http.MethodPost, "/api/v1/render", map[string]string{"markdown": markdown, "skin": skin}, &out)
+	body := map[string]string{"markdown": markdown, "theme": theme}
+	if css != "" {
+		body["theme_css"] = css
+	}
+	err := c.sendJSON(ctx, http.MethodPost, "/api/v1/render", body, &out)
 	return out.HTML, err
 }
 

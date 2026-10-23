@@ -47,7 +47,7 @@ func (c *checker) add(level string, line int, field, format string, args ...any)
 }
 
 var knownMeta = map[string]bool{
-	"title": true, "author": true, "digest": true, "cover": true, "skin": true,
+	"title": true, "author": true, "digest": true, "cover": true, "theme": true,
 	"source_url": true, "media_id": true, "open_comment": true, "fans_comment": true,
 }
 
@@ -66,10 +66,10 @@ func (c *checker) bodyLine(off int) int {
 }
 
 // CheckArticle 离线检查文章：frontmatter、长度限制、封面和图片、模板残留、微信会过滤的写法。
-// skins 非 nil 时同时检查皮肤名
-func CheckArticle(a *Article, skins []string) []Issue {
+// themes 非 nil 时同时检查主题名
+func CheckArticle(a *Article, themes []string) []Issue {
 	c := &checker{a: a}
-	c.checkMeta(skins)
+	c.checkMeta(themes)
 	c.checkCover()
 	c.checkBody()
 	sort.SliceStable(c.issues, func(i, j int) bool {
@@ -81,7 +81,7 @@ func CheckArticle(a *Article, skins []string) []Issue {
 	return c.issues
 }
 
-func (c *checker) checkMeta(skins []string) {
+func (c *checker) checkMeta(themes []string) {
 	m := c.a.Meta
 	if c.a.front != "" {
 		var raw map[string]any
@@ -114,8 +114,12 @@ func (c *checker) checkMeta(skins []string) {
 	if m.FansComment != nil && *m.FansComment && m.OpenComment != nil && !*m.OpenComment {
 		c.add(levelWarn, c.fieldLine("fans_comment"), "fans_comment", "关闭评论时 fans_comment 不生效")
 	}
-	if m.Skin != "" && skins != nil && !contains(skins, m.Skin) {
-		c.add(levelError, c.fieldLine("skin"), "skin", "皮肤 %q 不存在，可用：%s", m.Skin, strings.Join(skins, ", "))
+	if isThemeFile(m.Theme) {
+		if _, err := readThemeCSS(themePath(m.Theme, c.a.Dir)); err != nil {
+			c.add(levelError, c.fieldLine("theme"), "theme", "主题文件不可用：%v", err)
+		}
+	} else if m.Theme != "" && themes != nil && !contains(themes, m.Theme) {
+		c.add(levelError, c.fieldLine("theme"), "theme", "主题 %q 不存在，可用：%s", m.Theme, strings.Join(themes, ", "))
 	}
 }
 
@@ -260,18 +264,18 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// fetchSkins 取服务端皮肤名；不可用时返回 nil（跳过皮肤检查）
-func (e *env) fetchSkins(ctx context.Context) []string {
+// fetchThemes 取服务端主题名；不可用时返回 nil（跳过主题检查）
+func (e *env) fetchThemes(ctx context.Context) []string {
 	var out struct {
-		Skins []struct {
+		Themes []struct {
 			Name string `json:"name"`
-		} `json:"skins"`
+		} `json:"themes"`
 	}
-	if e.client.getJSON(ctx, "/api/v1/skins", &out) != nil {
+	if e.client.getJSON(ctx, "/api/v1/themes", &out) != nil {
 		return nil
 	}
-	names := make([]string, 0, len(out.Skins))
-	for _, s := range out.Skins {
+	names := make([]string, 0, len(out.Themes))
+	for _, s := range out.Themes {
 		names = append(names, s.Name)
 	}
 	return names

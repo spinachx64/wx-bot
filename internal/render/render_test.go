@@ -19,9 +19,9 @@ func newTestRenderer(t *testing.T, dir string) *Renderer {
 	return New(reg)
 }
 
-func mustRender(t *testing.T, r *Renderer, md, skin string) string {
+func mustRender(t *testing.T, r *Renderer, md, theme string) string {
 	t.Helper()
-	out, err := r.Render(md, skin)
+	out, err := r.Render(md, theme)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestMultiItemOlKept(t *testing.T) {
 	}
 }
 
-func TestSkinColorsApplied(t *testing.T) {
+func TestThemeColorsApplied(t *testing.T) {
 	r := newTestRenderer(t, "")
 	out := mustRender(t, r, "## 标题\n\n**粗体** `code`\n\n> 引用\n", "")
 	for _, want := range []string{"border-left: 4px solid #0891b2", "color: #0891b2; font-weight: bold", "background: #e6f7fb", "background: #eefcff"} {
@@ -104,16 +104,16 @@ func TestTaskListAndTableAlign(t *testing.T) {
 	if strings.Contains(out, "<input") || !strings.Contains(out, "✅") || !strings.Contains(out, "⬜") {
 		t.Fatalf("task list: %s", out)
 	}
-	// goldmark 输出的对齐样式会和皮肤样式合并后重新序列化
+	// goldmark 输出的对齐样式会和主题样式合并后重新序列化
 	if !strings.Contains(out, "text-align: center;") || !strings.Contains(out, "text-align: right;") {
 		t.Fatalf("table align: %s", out)
 	}
 }
 
-// 自定义皮肤是一份独立 CSS，可以完全改变结构表现：伪元素、居中标题、背景块等
-func TestCustomCSSSkin(t *testing.T) {
+// 自定义主题是一份独立 CSS，可以完全改变结构表现：伪元素、居中标题、背景块等
+func TestCustomCSSTheme(t *testing.T) {
 	dir := t.TempDir()
-	skin := `/* 玫瑰 —— 测试皮肤 */
+	theme := `/* 玫瑰 —— 测试主题 */
 #nice { color: #333333; }
 #nice h1 { text-align: center; background: #be123c; color: #ffffff; padding: 12px; }
 #nice h1::before { content: "\201C"; color: #ffd6e0; }
@@ -123,7 +123,7 @@ func TestCustomCSSSkin(t *testing.T) {
 #nice .hljs-keyword { color: #ff0000; }
 @media (max-width: 600px) { #nice h1 { color: #000000; } }
 `
-	os.WriteFile(filepath.Join(dir, "rose.css"), []byte(skin), 0o644)
+	os.WriteFile(filepath.Join(dir, "rose.css"), []byte(theme), 0o644)
 	r := newTestRenderer(t, dir)
 	out := mustRender(t, r, "# 标题\n\n## 二级\n\n**x**\n\n```js\nconst a = 1;\n```\n", "rose")
 	for _, want := range []string{
@@ -138,14 +138,14 @@ func TestCustomCSSSkin(t *testing.T) {
 		}
 	}
 	if strings.Contains(out, "#0891b2") || strings.Contains(out, "class=") || strings.Contains(out, `id="nice"`) {
-		t.Fatalf("default skin leaked or helper attrs kept: %s", out)
+		t.Fatalf("default theme leaked or helper attrs kept: %s", out)
 	}
-	s, _ := r.Skins().Get("rose")
+	s, _ := r.Themes().Get("rose")
 	if s.Label != "玫瑰" || len(s.Warnings) == 0 {
 		t.Fatalf("label/warnings: %+v", s)
 	}
 	if _, err := r.Render("x", "nope"); err == nil {
-		t.Fatal("unknown skin should error")
+		t.Fatal("unknown theme should error")
 	}
 }
 
@@ -167,7 +167,7 @@ func TestSpecificityAndImportant(t *testing.T) {
 	}
 }
 
-func TestSkinRejectsScriptValues(t *testing.T) {
+func TestThemeRejectsScriptValues(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "bad.css"), []byte(`#nice a { background: url("javascript:alert(1)"); color: #000000; }`), 0o644)
 	r := newTestRenderer(t, dir)
@@ -192,14 +192,14 @@ func TestCodeTextColorSurvivesCodeStyleStrip(t *testing.T) {
 	}
 }
 
-// mdnice 主题靠 h2 .content 做色块；「;;」这类空声明不能让皮肤加载失败
+// mdnice 主题靠 h2 .content 做色块；「;;」这类空声明不能让主题加载失败
 func TestHeadingContentSpanAndEmptyDecl(t *testing.T) {
 	dir := t.TempDir()
-	skin := `/* 块 */
+	theme := `/* 块 */
 #nice h2 .content { background: #ef7060;; color: #ffffff; }
 #nice h2 .prefix { display: none; }
 `
-	os.WriteFile(filepath.Join(dir, "block.css"), []byte(skin), 0o644)
+	os.WriteFile(filepath.Join(dir, "block.css"), []byte(theme), 0o644)
 	r := newTestRenderer(t, dir)
 	out := mustRender(t, r, "## 标题\n\n### 三级\n", "block")
 	if !strings.Contains(out, `<h2><span style="background: #ef7060; color: #ffffff;">标题</span></h2>`) {
@@ -210,12 +210,12 @@ func TestHeadingContentSpanAndEmptyDecl(t *testing.T) {
 	}
 }
 
-func TestBuiltinSkinsLoadClean(t *testing.T) {
+func TestBuiltinThemesLoadClean(t *testing.T) {
 	r := newTestRenderer(t, "")
-	for _, s := range r.Skins().List() {
+	for _, s := range r.Themes().List() {
 		out := mustRender(t, r, "# 一\n\n## 二\n\n> 引用\n\n```go\nx := 1\n```\n", s.Name)
 		if strings.Contains(out, "class=") {
-			t.Fatalf("skin %s leaked class: %s", s.Name, out)
+			t.Fatalf("theme %s leaked class: %s", s.Name, out)
 		}
 	}
 }

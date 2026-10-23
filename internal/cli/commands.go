@@ -29,9 +29,9 @@ const usage = `wxctl — wx-bot 命令行
   login                 校验并保存 token（读 --token，否则从标准输入读一行）
   logout                从配置文件删除 token
   config                显示生效的配置
-  config set <键> <值>  设置文章默认值：author、open_comment、fans_comment、skin
+  config set <键> <值>  设置文章默认值：author、open_comment、fans_comment、theme
   ping                  检查服务和 token
-  skins                 列出可用皮肤
+  themes                列出可用主题
   new    <标题|file.md|-> 创建带 frontmatter 的文章模板，默认值取自配置
   format <md|->         整理成带 frontmatter 的文章并做提交前检查（-o 指定输出，--strict 警告也算失败）
   render <md|->         渲染 markdown 为 HTML
@@ -64,7 +64,7 @@ var commands = map[string]func(*env, []string) error{
 	"logout":  cmdLogout,
 	"config":  cmdConfig,
 	"ping":    cmdPing,
-	"skins":   cmdSkins,
+	"themes":  cmdThemes,
 	"render":  cmdRender,
 	"draft":   cmdDraft,
 	"drafts":  cmdDrafts,
@@ -309,11 +309,11 @@ func cmdConfig(e *env, args []string) error {
 	}
 	v := map[string]any{
 		"config": c.Path(), "mode": c.Mode, "url": c.URL,
-		"token": maskToken(c.Token), "skin": c.Skin, "cache_dir": c.CacheDir, "defaults": d,
+		"token": maskToken(c.Token), "theme": c.Theme, "cache_dir": c.CacheDir, "defaults": d,
 	}
-	text := fmt.Sprintf("config:    %s\nmode:      %s\nurl:       %s\ntoken:     %s\nskin:      %s\ncache_dir: %s\n"+
+	text := fmt.Sprintf("config:    %s\nmode:      %s\nurl:       %s\ntoken:     %s\ntheme:     %s\ncache_dir: %s\n"+
 		"defaults:\n  author:       %s\n  open_comment: %s\n  fans_comment: %s",
-		c.Path(), c.Mode, c.URL, first(maskToken(c.Token), "(未设置)"), first(c.Skin, "(服务端默认)"), c.CacheDir,
+		c.Path(), c.Mode, c.URL, first(maskToken(c.Token), "(未设置)"), first(c.Theme, "(服务端默认)"), c.CacheDir,
 		first(d.Author, "(未设置)"), boolText(d.OpenComment, "(未设置，服务端默认 true)"), boolText(d.FansComment, "(未设置，默认 false)"))
 	return e.result(v, text)
 }
@@ -329,24 +329,24 @@ func cmdPing(e *env, args []string) error {
 	return e.result(map[string]any{"url": e.cfg.URL}, "ok "+e.cfg.URL)
 }
 
-func cmdSkins(e *env, args []string) error {
-	fs := newFlagSet(e, "skins", "")
+func cmdThemes(e *env, args []string) error {
+	fs := newFlagSet(e, "themes", "")
 	if _, err := parseArgs(fs, args, 0); err != nil {
 		return err
 	}
 	var out struct {
 		Default string `json:"default"`
-		Skins   []struct {
+		Themes  []struct {
 			Name     string   `json:"name"`
 			Label    string   `json:"label"`
 			Warnings []string `json:"warnings"`
-		} `json:"skins"`
+		} `json:"themes"`
 	}
-	if err := e.client.getJSON(e.ctx, "/api/v1/skins", &out); err != nil {
+	if err := e.client.getJSON(e.ctx, "/api/v1/themes", &out); err != nil {
 		return err
 	}
 	var b strings.Builder
-	for _, s := range out.Skins {
+	for _, s := range out.Themes {
 		mark := " "
 		if s.Name == out.Default {
 			mark = "*"
@@ -357,5 +357,5 @@ func cmdSkins(e *env, args []string) error {
 		}
 		b.WriteByte('\n')
 	}
-	return e.result(map[string]any{"default": out.Default, "skins": out.Skins}, strings.TrimRight(b.String(), "\n"))
+	return e.result(map[string]any{"default": out.Default, "themes": out.Themes}, strings.TrimRight(b.String(), "\n"))
 }

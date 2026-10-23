@@ -64,11 +64,11 @@ func newEnv(t *testing.T, m *mockWX) http.Handler {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	skins, err := render.LoadRegistry("")
+	themes, err := render.LoadRegistry("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(st, render.New(skins), testAdminToken, log, wechat.WithBaseURL(ts.URL)).Handler()
+	return New(st, render.New(themes), testAdminToken, log, wechat.WithBaseURL(ts.URL)).Handler()
 }
 
 func call(h http.Handler, method, path, ct string, body io.Reader, auth bool) *httptest.ResponseRecorder {
@@ -247,5 +247,27 @@ func TestMaterialGetBinary(t *testing.T) {
 	}
 	if rec.Body.String() != "\xff\xd8\xffbinary" {
 		t.Fatalf("body mismatch")
+	}
+}
+
+// theme_css 随请求上传，只用于本次渲染；坏 CSS 返回 400，不影响内置主题
+func TestRenderCustomThemeCSS(t *testing.T) {
+	h := newEnv(t, &mockWX{})
+	body := `{"markdown":"## 标题","theme":"ghost","theme_css":"#nice h2 { color: #123456; }"}`
+	rec := call(h, "POST", "/api/v1/render", "application/json", strings.NewReader(body), true)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "color: #123456") {
+		t.Fatalf("custom css: %d %s", rec.Code, rec.Body)
+	}
+	// 没有可用规则、超过大小上限都算请求错误
+	for _, css := range []string{"/* 只有注释 */", strings.Repeat("a", render.MaxCustomCSS+1)} {
+		b, _ := json.Marshal(map[string]string{"markdown": "x", "theme_css": css})
+		rec = call(h, "POST", "/api/v1/render", "application/json", bytes.NewReader(b), true)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("bad css (%d bytes): %d %s", len(css), rec.Code, rec.Body)
+		}
+	}
+	rec = call(h, "GET", "/api/v1/themes", "", nil, true)
+	if strings.Contains(rec.Body.String(), "custom") {
+		t.Fatalf("custom theme must not be registered: %s", rec.Body)
 	}
 }

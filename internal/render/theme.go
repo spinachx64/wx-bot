@@ -15,20 +15,20 @@ import (
 	"github.com/aymerick/douceur/parser"
 )
 
-//go:embed skins/*.css
-var builtinSkins embed.FS
+//go:embed themes/*.css
+var builtinThemes embed.FS
 
-const DefaultSkin = "summer-breeze"
+const DefaultTheme = "summer-breeze"
 
-var ErrUnknownSkin = errors.New("unknown skin")
+var ErrUnknownTheme = errors.New("unknown theme")
 
-// Skin 一套排版皮肤，即一份完整的 CSS。
+// Theme 一套排版主题，即一份完整的 CSS。
 // 渲染时文章包在 <section id="nice"> 里，CSS 规则按优先级内联到每个元素上，
 // ::before / ::after 展开成真实的 <span>。选择器建议以 #nice 开头。
-type Skin struct {
+type Theme struct {
 	Name     string   `json:"name"`
 	Label    string   `json:"label"`
-	Warnings []string `json:"warnings,omitempty"` // 被跳过的规则，方便调试皮肤
+	Warnings []string `json:"warnings,omitempty"` // 被跳过的规则，方便调试主题
 	rules    []rule
 }
 
@@ -46,8 +46,25 @@ var (
 	emptyDeclRe = regexp.MustCompile(`;(\s*;)+`)
 )
 
-func parseSkin(name string, data []byte) (*Skin, error) {
-	s := &Skin{Name: name, Label: name}
+// MaxCustomCSS 随请求上传的自定义主题 CSS 上限
+const MaxCustomCSS = 256 << 10
+
+var ErrBadCustomCSS = errors.New("invalid custom theme css")
+
+// ParseTheme 解析随请求上传的自定义 CSS，只在本次渲染使用，不进注册表
+func ParseTheme(name string, data []byte) (*Theme, error) {
+	if len(data) > MaxCustomCSS {
+		return nil, fmt.Errorf("%w: larger than %d bytes", ErrBadCustomCSS, MaxCustomCSS)
+	}
+	t, err := parseTheme(name, data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadCustomCSS, err)
+	}
+	return t, nil
+}
+
+func parseTheme(name string, data []byte) (*Theme, error) {
+	s := &Theme{Name: name, Label: name}
 	if m := labelRe.FindSubmatch(data); m != nil {
 		// 首个注释的第一行作为显示名，「夏日海风 —— 说明」只取破折号前
 		label, _, _ := strings.Cut(string(m[1]), "——")
@@ -59,7 +76,7 @@ func parseSkin(name string, data []byte) (*Skin, error) {
 	// mdnice 主题里常见「color: red;;」，douceur 遇到空声明会直接报错
 	sheet, err := parser.Parse(emptyDeclRe.ReplaceAllString(string(data), ";"))
 	if err != nil {
-		return nil, fmt.Errorf("skin %s: %w", name, err)
+		return nil, fmt.Errorf("theme %s: %w", name, err)
 	}
 	for _, r := range sheet.Rules {
 		if r.Kind != css.QualifiedRule {
@@ -82,12 +99,12 @@ func parseSkin(name string, data []byte) (*Skin, error) {
 		}
 	}
 	if len(s.rules) == 0 {
-		return nil, fmt.Errorf("skin %s: no usable rules", name)
+		return nil, fmt.Errorf("theme %s: no usable rules", name)
 	}
 	return s, nil
 }
 
-func (s *Skin) parseDecls(in []*css.Declaration) []decl {
+func (s *Theme) parseDecls(in []*css.Declaration) []decl {
 	out := make([]decl, 0, len(in))
 	for _, d := range in {
 		prop := strings.ToLower(strings.TrimSpace(d.Property))
@@ -106,26 +123,26 @@ func (s *Skin) parseDecls(in []*css.Declaration) []decl {
 	return out
 }
 
-func (s *Skin) warn(format string, args ...any) {
+func (s *Theme) warn(format string, args ...any) {
 	s.Warnings = append(s.Warnings, fmt.Sprintf(format, args...))
 }
 
-// Registry 可用皮肤集合
+// Registry 可用主题集合
 type Registry struct {
-	skins map[string]*Skin
-	names []string
+	themes map[string]*Theme
+	names  []string
 }
 
-// LoadRegistry 加载内置皮肤；dir 非空时再加载其中的 *.css，
-// 同名文件覆盖内置皮肤。皮肤名取文件名。
+// LoadRegistry 加载内置主题；dir 非空时再加载其中的 *.css，
+// 同名文件覆盖内置主题。主题名取文件名。
 func LoadRegistry(dir string) (*Registry, error) {
 	files := map[string][]byte{}
-	entries, err := builtinSkins.ReadDir("skins")
+	entries, err := builtinThemes.ReadDir("themes")
 	if err != nil {
 		return nil, err
 	}
 	for _, e := range entries {
-		data, err := builtinSkins.ReadFile("skins/" + e.Name())
+		data, err := builtinThemes.ReadFile("themes/" + e.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -144,40 +161,40 @@ func LoadRegistry(dir string) (*Registry, error) {
 			files[strings.TrimSuffix(filepath.Base(m), ".css")] = data
 		}
 	}
-	if _, ok := files[DefaultSkin]; !ok {
-		return nil, fmt.Errorf("default skin %s missing", DefaultSkin)
+	if _, ok := files[DefaultTheme]; !ok {
+		return nil, fmt.Errorf("default theme %s missing", DefaultTheme)
 	}
 
-	r := &Registry{skins: map[string]*Skin{}}
+	r := &Registry{themes: map[string]*Theme{}}
 	for name, data := range files {
-		s, err := parseSkin(name, data)
+		s, err := parseTheme(name, data)
 		if err != nil {
 			return nil, err
 		}
-		r.skins[name] = s
+		r.themes[name] = s
 		r.names = append(r.names, name)
 	}
 	sort.Strings(r.names)
 	return r, nil
 }
 
-// Get 按名称取皮肤，空名称返回默认皮肤
-func (r *Registry) Get(name string) (*Skin, error) {
+// Get 按名称取主题，空名称返回默认主题
+func (r *Registry) Get(name string) (*Theme, error) {
 	if name == "" {
-		name = DefaultSkin
+		name = DefaultTheme
 	}
-	s, ok := r.skins[name]
+	s, ok := r.themes[name]
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrUnknownSkin, name)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownTheme, name)
 	}
 	return s, nil
 }
 
-// List 按名称排序返回全部皮肤
-func (r *Registry) List() []*Skin {
-	out := make([]*Skin, len(r.names))
+// List 按名称排序返回全部主题
+func (r *Registry) List() []*Theme {
+	out := make([]*Theme, len(r.names))
 	for i, n := range r.names {
-		out[i] = r.skins[n]
+		out[i] = r.themes[n]
 	}
 	return out
 }

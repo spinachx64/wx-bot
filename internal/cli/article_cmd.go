@@ -32,8 +32,8 @@ func (e *env) uploader() *Uploader {
 }
 
 func cmdRender(e *env, args []string) error {
-	fs := newFlagSet(e, "render", "<md|-> [--skin name] [--upload-images]")
-	skin := fs.String("skin", "", "皮肤，默认取 frontmatter / 配置 / 服务端默认")
+	fs := newFlagSet(e, "render", "<md|-> [--theme 名称|file.css] [--upload-images]")
+	theme := fs.String("theme", "", "主题名或本地 .css 文件，默认取 frontmatter / 配置 / 服务端默认")
 	upload := fs.Bool("upload-images", false, "先上传图片并替换为微信地址")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
@@ -43,12 +43,16 @@ func cmdRender(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	name, css, err := e.resolveTheme(*theme, a)
+	if err != nil {
+		return err
+	}
 	if *upload {
 		if err := e.uploader().PrepareArticle(e.ctx, a); err != nil {
 			return err
 		}
 	}
-	html, err := e.client.Render(e.ctx, a.Markdown, first(*skin, a.Meta.Skin, e.cfg.Skin))
+	html, err := e.client.Render(e.ctx, a.Markdown, name, css)
 	if err != nil {
 		return err
 	}
@@ -57,7 +61,7 @@ func cmdRender(e *env, args []string) error {
 
 func cmdDraft(e *env, args []string) error {
 	fs := newFlagSet(e, "draft", "<md|-> [参数]")
-	skin := fs.String("skin", "", "皮肤")
+	theme := fs.String("theme", "", "主题名或本地 .css 文件")
 	cover := fs.String("cover", "", "封面图路径或 URL（覆盖 frontmatter 的 cover）")
 	thumb := fs.String("thumb", "", "直接使用已有的封面 media_id")
 	mediaID := fs.String("media-id", "", "更新指定草稿，默认读取 frontmatter media_id，否则新建")
@@ -101,6 +105,12 @@ func cmdDraft(e *env, args []string) error {
 		}
 	}
 
+	// 本地主题文件在上传图片前读取，读不到就什么都不动
+	themeName, themeCSS, err := e.resolveTheme(*theme, a)
+	if err != nil {
+		return err
+	}
+
 	up := e.uploader()
 	if err := up.PrepareArticle(e.ctx, a); err != nil {
 		return err
@@ -122,10 +132,13 @@ func cmdDraft(e *env, args []string) error {
 		"author":                m.Author,
 		"digest":                m.Digest,
 		"markdown":              a.Markdown,
-		"skin":                  first(*skin, m.Skin, e.cfg.Skin),
+		"theme":                 themeName,
 		"thumb_media_id":        thumbID,
 		"content_source_url":    m.SourceURL,
 		"only_fans_can_comment": boolInt(m.FansComment != nil && *m.FansComment),
+	}
+	if themeCSS != "" {
+		article["theme_css"] = themeCSS
 	}
 	if m.OpenComment != nil {
 		article["need_open_comment"] = boolInt(*m.OpenComment)

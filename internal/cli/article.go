@@ -19,7 +19,7 @@ type Meta struct {
 	Author      string `yaml:"author"`
 	Digest      string `yaml:"digest"`
 	Cover       string `yaml:"cover"`        // 封面图路径或 URL
-	Skin        string `yaml:"skin"`         // 皮肤
+	Theme       string `yaml:"theme"`        // 主题
 	SourceURL   string `yaml:"source_url"`   // 阅读原文
 	MediaID     string `yaml:"media_id"`     // 指定要更新的草稿
 	OpenComment *bool  `yaml:"open_comment"` // 打开评论，不写时由服务端默认打开

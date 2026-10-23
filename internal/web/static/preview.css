@@ -8,6 +8,8 @@ body {
   font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   word-wrap: break-word;
   overflow: hidden;
+  /* 包住子元素的外边距，body 高度即内容高度，iframe 才能随内容缩小 */
+  display: flow-root;
 }
 img { max-width: 100% !important; height: auto !important; }
 a { color: #576b95; }

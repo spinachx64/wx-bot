@@ -74,7 +74,8 @@ function toError(status, data) {
 }
 
 async function api(method, path, body) {
-  const opts = { method, headers: { Authorization: 'Bearer ' + token } };
+  // 写作页未登录也会调用公开接口，没有令牌时不带认证头
+  const opts = { method, headers: token ? { Authorization: 'Bearer ' + token } : {} };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -160,25 +161,45 @@ async function copyText(text) {
 
 async function signIn(t, remember) {
   token = t;
-  const me = await api('GET', '/api/v1/ping');
+  let me;
+  try { me = await api('GET', '/api/v1/ping'); } catch (err) {
+    token = tokenStore.get(); // 登录失败时不保留输错的令牌
+    throw err;
+  }
   tokenStore.set(t, remember);
   $('#account-name').textContent = me.tenant ? `${me.tenant}` : '';
   $('#account-name').title = me.appid || '';
-  $('#login').hidden = true;
-  $('#app').hidden = false;
   route();
 }
 
+// signOut 清掉令牌后重新路由：写作页不需要登录，留在原页面；其他页面回到登录框
 function signOut(msg) {
   tokenStore.clear();
   token = '';
+  $('#account-name').textContent = '';
+  $('#login-err').textContent = msg || '';
+  $('#token-input').value = '';
+  route();
+}
+
+function showLogin() {
   closeDraftPreview();
   $('#app').hidden = true;
   $('#login').hidden = false;
-  $('#login-err').textContent = msg || '';
-  $('#token-input').value = '';
   $('#token-input').focus();
 }
+
+function showApp() {
+  $('#login').hidden = true;
+  $('#app').hidden = false;
+  $('#logout').hidden = !token;
+  $('#login-link').hidden = !!token;
+}
+
+// 登录框里的「去写作」：已经在 #/write 时 hashchange 不会触发，手动路由
+$('.login-alt').addEventListener('click', (e) => {
+  if (location.hash === '#/write') { e.preventDefault(); route(); }
+});
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -198,6 +219,7 @@ $('#logout').addEventListener('click', async () => {
 });
 
 // ---------- 路由 ----------
+// #/write                 写作排版（默认页，免登录）
 // #/drafts                草稿列表
 // #/drafts/<media_id>     草稿预览与发布
 // #/materials/<type>      素材（image / video / voice / news）
@@ -205,17 +227,21 @@ $('#logout').addEventListener('click', async () => {
 let routeSeq = 0; // 快速切换页面时丢弃过期请求的结果
 
 function route() {
-  if (!token) return;
   closeDraftPreview();
+  closeGallery();
   const seq = ++routeSeq;
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const [page, arg] = parts;
+  const cur = page || 'write';
+  if (cur !== 'write' && !token) return showLogin();
+  showApp();
   document.querySelectorAll('[data-nav]').forEach((a) => {
-    a.toggleAttribute('aria-current', a.dataset.nav === (page || 'drafts'));
-    if (a.dataset.nav === (page || 'drafts')) a.setAttribute('aria-current', 'page');
+    if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
   const alive = () => seq === routeSeq;
+  if (cur === 'write') return renderWrite(alive);
   if (page === 'materials') return renderMaterials(MATERIAL_TYPES[arg] ? arg : 'image', alive);
   if (page === 'drafts' && arg) return renderDraft(arg, alive);
   return renderDrafts(alive);
@@ -338,6 +364,25 @@ function fixContent(html) {
   return doc.body.innerHTML;
 }
 
+// frameDoc 正文预览 iframe 的文档，版心样式见 preview.css
+const frameDoc = (html) => `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+  <link rel="stylesheet" href="preview.css"></head><body>${html}</body></html>`;
+
+// autoHeight iframe 高度跟随内容（图片加载后也会变高），整页只有一个滚动条。
+// 量 body 而不是 documentElement：后者不会小于 iframe 当前高度，内容变短时缩不回去
+function autoHeight(frame) {
+  let observer;
+  frame.addEventListener('load', () => {
+    observer?.disconnect();
+    const doc = frame.contentDocument;
+    if (!doc?.body) return;
+    const fit = () => { frame.style.height = Math.ceil(doc.body.getBoundingClientRect().height) + 'px'; };
+    fit();
+    observer = new ResizeObserver(fit);
+    observer.observe(doc.body);
+  });
+}
+
 let previewSeq = 0;
 const previewDialog = $('#draft-preview');
 function closeDraftPreview() {
@@ -422,8 +467,7 @@ function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
         t.setAttribute('aria-selected', String(Number(t.dataset.idx) === i)));
       view.querySelectorAll('[data-idx]').forEach((t) =>
         Number(t.dataset.idx) === i ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
-      frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
-        <link rel="stylesheet" href="preview.css"></head><body>${fixContent(a.content)}</body></html>`;
+      frame.srcdoc = frameDoc(fixContent(a.content));
       $('#info').innerHTML = `
         <dt>作者</dt><dd>${esc(a.author || '未填写')}</dd>
         <dt>摘要</dt><dd>${esc(a.digest || '未填写')}</dd>
@@ -434,16 +478,7 @@ function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
       if (a.url) wx.href = a.url;
     };
 
-    // iframe 高度跟随内容（图片加载后也会变高），整页只有一个滚动条
-    frame.addEventListener('load', () => {
-      const doc = frame.contentDocument;
-      if (!doc) return;
-      const fit = () => { frame.style.height = doc.documentElement.scrollHeight + 'px'; };
-      fit();
-      const observer = new ResizeObserver(fit);
-      observer.observe(doc.body);
-      frame.addEventListener('load', () => observer.disconnect(), { once: true });
-    });
+    autoHeight(frame);
 
     view.querySelectorAll('[data-idx]').forEach((t) =>
       t.addEventListener('click', (e) => { e.preventDefault(); show(Number(t.dataset.idx)); }));
@@ -460,7 +495,7 @@ function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
         await busy(e.target, '删除中…', () => api('DELETE', `/api/v1/drafts/${encodeURIComponent(mediaId)}`));
         toast('草稿已删除');
         closeDraftPreview();
-        if (location.hash === '#/drafts' || !location.hash) route();
+        if (location.hash === '#/drafts') route();
         else location.hash = '#/drafts';
       } catch (err) { toast(err.message, true); }
     });
@@ -515,6 +550,276 @@ async function watchPublish(mediaId, alive) {
     await new Promise((r) => setTimeout(r, 3000));
   }
   if (alive()) paint('busy', '仍在发布中', '<p class="hint">可以稍后刷新页面，或到公众号后台查看结果。</p>');
+}
+
+// ---------- 写作：Markdown 排版 + 复制到公众号 ----------
+// 免登录。正文和所选主题存在本机浏览器里，刷新不丢；渲染在浏览器里用 WASM 完成，和 wxctl 建草稿的效果一致
+
+const WRITE_KEY = 'wxbot.write.md';
+const SKIN_KEY = 'wxbot.write.skin';
+const local = {
+  get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+const SAMPLE_MD = `# 一级标题
+
+这是一段示例正文。在左侧输入 Markdown，右侧实时预览，选好主题后点「复制到公众号」，到公众号后台的编辑器里直接粘贴即可。
+
+## 二级标题
+
+支持 **加粗**、*斜体*、~~删除线~~、\`行内代码\` 和 [链接](https://mp.weixin.qq.com)。
+
+### 三级标题
+
+> 引用：好的排版让读者更愿意读完。
+
+- 无序列表第一项
+- 无序列表第二项
+
+1. 有序列表第一项
+2. 有序列表第二项
+
+\`\`\`js
+function hello(name) {
+  return \`你好，\${name}\`;
+}
+\`\`\`
+
+| 主题 | 风格 |
+| --- | --- |
+| 橙心 | 温暖 |
+| 烟灰 | 素雅 |
+
+---
+
+文末的一段话。
+`;
+
+// 渲染器编译成 WebAssembly（cmd/mdwasm）在浏览器里运行，不调用需要 token 的接口。
+// 首次加载约 3MB（gzip 后），之后走浏览器缓存
+let rendererReady = null;
+function loadRenderer() {
+  rendererReady ??= (async () => {
+    if (!window.Go) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'wasm_exec.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('排版引擎加载失败，请刷新重试'));
+        document.head.append(s);
+      });
+    }
+    const go = new window.Go();
+    const ready = new Promise((r) => window.addEventListener('wxrender-ready', r, { once: true }));
+    let resp;
+    try { resp = await fetch('render.wasm'); } catch { throw new Error('排版引擎加载失败，请检查网络后重试'); }
+    if (!resp.ok) throw new Error(`排版引擎加载失败（${resp.status}）`);
+    const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), go.importObject);
+    go.run(instance);
+    await ready;
+    if (window.wxRenderError) throw new Error(`排版引擎初始化失败：${window.wxRenderError}`);
+  })();
+  rendererReady.catch(() => { rendererReady = null; }); // 失败后允许重试
+  return rendererReady;
+}
+
+let skinsCache = null; // { default, skins: [{name, label}] }
+async function loadSkins() {
+  if (!skinsCache) {
+    await loadRenderer();
+    skinsCache = JSON.parse(window.wxSkins());
+  }
+  return skinsCache;
+}
+
+async function renderMd(markdown, skin) {
+  await loadRenderer();
+  const res = window.wxRender(markdown, skin);
+  if (res.error) throw new Error(res.error);
+  return res.html || '';
+}
+
+function renderWrite(alive) {
+  setTitle('写作');
+  view.innerHTML = `<div class="page-head">
+      <div><span class="eyebrow">WRITE · FORMAT · PASTE</span><h1>写作</h1>
+        <p class="sub">输入 Markdown，选择主题，一键复制后到公众号后台粘贴</p></div>
+      <div class="page-actions write-actions">
+        <label class="sr-only" for="skin-select">排版主题</label>
+        <select id="skin-select" class="select" disabled><option>加载主题…</option></select>
+        <button class="btn" type="button" id="open-gallery">主题预览</button>
+        <button class="btn primary" type="button" id="copy-html" disabled>复制到公众号</button>
+      </div>
+    </div>
+    <div class="write">
+      <section class="editor-pane">
+        <div class="pane-head"><span>Markdown</span><span class="muted" id="md-stat"></span>
+          <button class="btn sm ghost" type="button" id="load-sample">填入示例</button></div>
+        <label class="sr-only" for="md-input">Markdown 正文</label>
+        <textarea id="md-input" spellcheck="false" placeholder="在这里输入或粘贴 Markdown…"></textarea>
+      </section>
+      <section class="preview-pane">
+        <article class="phone" aria-label="手机预览">
+          <div class="phone-bar" id="render-state">预览</div>
+          <iframe title="排版预览" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
+        </article>
+      </section>
+    </div>`;
+
+  const input = $('#md-input');
+  const select = $('#skin-select');
+  const copyBtn = $('#copy-html');
+  const frame = $('iframe', view);
+  const state = $('#render-state');
+  autoHeight(frame);
+  input.value = local.get(WRITE_KEY) || SAMPLE_MD;
+
+  let html = '';
+  let seq = 0;
+  let timer = 0;
+  const stat = () => { $('#md-stat').textContent = input.value ? `${input.value.length} 字符` : ''; };
+
+  const refresh = async () => {
+    const my = ++seq;
+    const md = input.value;
+    if (!md.trim()) {
+      html = '';
+      copyBtn.disabled = true;
+      state.textContent = '预览';
+      frame.srcdoc = frameDoc('<p style="color:#999;text-align:center;padding:40px 0">输入内容后在这里预览</p>');
+      return;
+    }
+    state.textContent = '排版中…';
+    try {
+      const out = await renderMd(md, select.value);
+      if (my !== seq || !alive()) return;
+      html = out;
+      copyBtn.disabled = false;
+      state.textContent = '预览';
+      frame.srcdoc = frameDoc(fixContent(out));
+    } catch (err) {
+      if (my !== seq || !alive()) return;
+      state.textContent = '排版失败';
+      toast(err.message, true);
+    }
+  };
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(refresh, 300); };
+
+  input.addEventListener('input', () => { local.set(WRITE_KEY, input.value); stat(); schedule(); });
+  // Tab 键插入两个空格，写代码块和嵌套列表时不跳出编辑框
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
+    input.dispatchEvent(new Event('input'));
+  });
+  $('#load-sample').addEventListener('click', async () => {
+    if (input.value.trim() && input.value !== SAMPLE_MD &&
+      !await confirmDialog({ title: '填入示例？', body: '当前内容会被示例文章替换，无法恢复。', ok: '替换', danger: true })) return;
+    input.value = SAMPLE_MD;
+    input.dispatchEvent(new Event('input'));
+  });
+  select.addEventListener('change', () => { local.set(SKIN_KEY, select.value); refresh(); });
+  copyBtn.addEventListener('click', () => copyRich(html));
+  $('#open-gallery').addEventListener('click', () => openGallery(select.value, (name) => {
+    select.value = name;
+    select.dispatchEvent(new Event('change'));
+  }));
+  stat();
+
+  return guard(alive, async () => {
+    const data = await loadSkins();
+    if (!alive()) return;
+    const saved = local.get(SKIN_KEY);
+    const names = data.skins.map((s) => s.name);
+    select.innerHTML = data.skins.map((s) => `<option value="${esc(s.name)}">${esc(s.label)}</option>`).join('');
+    select.value = names.includes(saved) ? saved : data.default;
+    select.disabled = false;
+    await refresh();
+  });
+}
+
+// copyRich 以 text/html 写入剪贴板，公众号编辑器粘贴时保留内联样式。
+// 不支持 ClipboardItem 的浏览器退回到选中隐藏节点再 execCommand('copy')
+async function copyRich(html) {
+  if (!html) return;
+  const plain = new DOMParser().parseFromString(html, 'text/html').body.innerText;
+  try {
+    if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error('unsupported');
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([plain], { type: 'text/plain' }),
+    })]);
+  } catch {
+    const box = document.createElement('div');
+    box.className = 'copy-buffer';
+    box.innerHTML = html; // 服务端渲染结果，正文里的原始 HTML 已被转义
+    document.body.append(box);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    sel.addRange(range);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    sel.removeAllRanges();
+    box.remove();
+    if (!ok) { toast('复制失败，请在预览区全选后手动复制', true); return; }
+  }
+  toast('已复制，去公众号后台编辑器里粘贴即可');
+}
+
+// ---------- 主题预览：同一篇示例套用全部主题 ----------
+
+const galleryDialog = $('#theme-gallery');
+const galleryCache = new Map(); // skin -> 示例渲染结果
+let gallerySeq = 0;
+
+function closeGallery() {
+  ++gallerySeq;
+  if (galleryDialog.open) galleryDialog.close();
+}
+$('#close-gallery').addEventListener('click', closeGallery);
+galleryDialog.addEventListener('click', (e) => { if (e.target === galleryDialog) closeGallery(); });
+galleryDialog.addEventListener('close', () => { ++gallerySeq; $('#gallery-body').replaceChildren(); });
+
+async function openGallery(current, onPick) {
+  const seq = ++gallerySeq;
+  const body = $('#gallery-body');
+  body.innerHTML = '<div class="gallery-grid" aria-busy="true"></div>';
+  galleryDialog.showModal();
+  let data;
+  try { data = await loadSkins(); } catch (err) {
+    if (seq === gallerySeq) body.innerHTML = `<div class="empty"><p>${esc(err.message)}</p></div>`;
+    return;
+  }
+  if (seq !== gallerySeq) return;
+  const grid = $('.gallery-grid', body);
+  grid.innerHTML = data.skins.map((s) => `<button type="button" class="theme-card" data-skin="${esc(s.name)}"
+      aria-pressed="${s.name === current}" aria-label="选用主题 ${esc(s.label)}">
+      <div class="theme-shot"><iframe tabindex="-1" aria-hidden="true" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></div>
+      <div class="theme-name"><strong>${esc(s.label)}</strong><span class="muted mono">${esc(s.name)}</span>
+        ${s.name === current ? '<span class="badge accent">当前</span>' : ''}</div></button>`).join('');
+  grid.removeAttribute('aria-busy');
+  grid.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-skin]');
+    if (!card) return;
+    onPick(card.dataset.skin);
+    closeGallery();
+    toast(`已切换为「${card.querySelector('strong').textContent}」`);
+  });
+  // 缩略图并发渲染，失败的卡片只显示提示，不影响其他主题
+  await Promise.all(data.skins.map(async (s) => {
+    const frame = grid.querySelector(`[data-skin="${CSS.escape(s.name)}"] iframe`);
+    try {
+      if (!galleryCache.has(s.name)) galleryCache.set(s.name, await renderMd(SAMPLE_MD, s.name));
+      if (seq !== gallerySeq) return;
+      frame.srcdoc = frameDoc(fixContent(galleryCache.get(s.name)));
+    } catch {
+      if (seq === gallerySeq) frame.srcdoc = frameDoc('<p style="color:#999;text-align:center;padding:40px 0">预览加载失败</p>');
+    }
+  }));
 }
 
 // ---------- 素材库 ----------
@@ -707,8 +1012,9 @@ document.addEventListener('error', (e) => {
 }, true);
 
 if (token) {
+  // 401 时 api 已经调用 signOut；其他错误（如断网）保留令牌，照常进入页面
   signIn(token, (() => { try { return !!localStorage.getItem(TOKEN_KEY); } catch { return false; } })())
-    .catch((err) => signOut(err.status === 401 ? '登录已失效，请重新登录' : err.message));
+    .catch((err) => { if (err.status !== 401) { $('#login-err').textContent = err.message; route(); } });
 } else {
-  signOut();
+  route();
 }

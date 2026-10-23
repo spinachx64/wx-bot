@@ -21,6 +21,7 @@
 ### 服务端
 
 ```bash
+go generate ./internal/web          # 编译写作页用的 WASM 排版引擎，嵌进面板
 go build -o wx-bot ./cmd/wx-bot
 
 export WXBOT_MASTER_KEY=$(openssl rand -hex 32)   # 加密公众号 secret，务必备份

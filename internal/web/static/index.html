@@ -15,26 +15,29 @@
   <form id="login-form" class="login-card">
     <img class="brand-mark" src="favicon.svg" alt="">
     <h1>酷卡公众号助手</h1>
-    <p class="muted">管理草稿与素材，预览并发布文章</p>
+    <p class="muted">登录后管理草稿与素材，预览并发布文章</p>
     <label for="token-input">访问令牌</label>
     <input id="token-input" type="password" autocomplete="current-password" placeholder="wxt_…" required>
     <label class="check"><input id="remember" type="checkbox"> 在此设备上保持登录</label>
     <button type="submit" class="btn primary block">登录</button>
     <p id="login-err" class="form-err" role="alert"></p>
+    <a class="login-alt" href="#/write">‹ 不登录，直接去写作排版</a>
   </form>
 </main>
 
 <div id="app" hidden>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#/drafts"><img class="brand-mark sm" src="favicon.svg" alt=""><span>酷卡公众号助手<small>内容工作台</small></span></a>
+      <a class="brand" href="#/write"><img class="brand-mark sm" src="favicon.svg" alt=""><span>酷卡公众号助手<small>内容工作台</small></span></a>
       <nav class="nav" aria-label="主导航">
+        <a href="#/write" data-nav="write"><span aria-hidden="true">✎</span> 写作</a>
         <a href="#/drafts" data-nav="drafts"><span aria-hidden="true">▤</span> 草稿箱</a>
         <a href="#/materials/image" data-nav="materials"><span aria-hidden="true">▧</span> 素材库</a>
       </nav>
       <div class="account">
         <span id="account-name" class="account-name"></span>
-        <button id="logout" class="btn ghost sm" type="button">退出</button>
+        <button id="logout" class="btn ghost sm" type="button" hidden>退出</button>
+        <a id="login-link" class="btn ghost sm" href="#/drafts">登录</a>
       </div>
     </div>
   </header>
@@ -55,6 +58,8 @@
 <dialog id="draft-preview" class="dialog draft-preview" aria-label="草稿预览"><header class="preview-top"><div><span class="eyebrow">ARTICLE PREVIEW</span><strong>文章预览</strong></div><button type="button" class="btn" id="close-preview" aria-label="关闭预览">关闭 ✕</button></header><div id="preview-content"></div></dialog>
 
 <dialog id="viewer" class="dialog viewer" aria-label="素材详情"></dialog>
+
+<dialog id="theme-gallery" class="dialog gallery" aria-labelledby="gallery-title"><header class="preview-top"><div><span class="eyebrow">THEME PREVIEW</span><strong id="gallery-title">主题预览 · 点击选用</strong></div><button type="button" class="btn" id="close-gallery" aria-label="关闭主题预览">关闭 ✕</button></header><div id="gallery-body"></div></dialog>
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <script src="app.js"></script>

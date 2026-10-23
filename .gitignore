@@ -3,3 +3,5 @@
 /output/
 *.env
 .DS_Store
+/internal/web/static/render.wasm
+/internal/web/static/wasm_exec.js

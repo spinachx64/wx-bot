@@ -33,8 +33,7 @@ const usage = `wxctl — wx-bot 命令行
   ping                  检查服务和 token
   skins                 列出可用皮肤
   new    <标题|file.md|-> 创建带 frontmatter 的文章模板，默认值取自配置
-  format <md|->         把普通 markdown 整理成带 frontmatter 的文章（-o 指定输出）
-  check  <md|->         离线检查文章，提前发现问题（--strict 警告也算失败）
+  format <md|->         整理成带 frontmatter 的文章并做提交前检查（-o 指定输出，--strict 警告也算失败）
   render <md|->         渲染 markdown 为 HTML
   draft  <md|->         上传图片、封面，新建或更新草稿
   drafts                列出草稿的 media_id 和标题（--offset / --count）
@@ -71,7 +70,6 @@ var commands = map[string]func(*env, []string) error{
 	"drafts":  cmdDrafts,
 	"new":     cmdNew,
 	"format":  cmdFormat,
-	"check":   cmdCheck,
 	"publish": cmdPublish,
 	"status":  cmdStatus,
 	"upload":  cmdUpload,

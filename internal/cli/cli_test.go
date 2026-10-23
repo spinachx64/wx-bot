@@ -410,9 +410,9 @@ func TestNewTemplateFailsCheckUntilFilled(t *testing.T) {
 	}
 
 	// 刚生成的模板：示例文字、示例图片、缺封面都要报错
-	code, out, _ := run(t, "", "--config", cfgPath, "--json", "check", md, "--offline")
-	if code != 1 {
-		t.Fatalf("raw template should fail check, got %d: %s", code, out)
+	code, out, _ := run(t, "", "--config", cfgPath, "--json", "format", md, "--offline")
+	if code != 1 || !strings.Contains(out, `"ok":false`) {
+		t.Fatalf("raw template should fail format check, got %d: %s", code, out)
 	}
 	for _, want := range []string{"模板示例文字", "模板示例图片", "图片不存在"} {
 		if !strings.Contains(out, want) {
@@ -423,8 +423,17 @@ func TestNewTemplateFailsCheckUntilFilled(t *testing.T) {
 	// 填好后通过
 	os.WriteFile(filepath.Join(dir, "cover.jpg"), pngBytes(t, 8, 8, false), 0o644)
 	os.WriteFile(md, []byte("---\ntitle: 好文章\ncover: cover.jpg\n---\n真正的正文\n"), 0o644)
-	if code, out, errOut := run(t, "", "--config", cfgPath, "check", md, "--offline"); code != 0 {
+	if code, out, errOut := run(t, "", "--config", cfgPath, "format", md, "--offline"); code != 0 || !strings.Contains(out, "检查通过") {
 		t.Fatalf("filled article should pass: %d %s %s", code, out, errOut)
+	}
+	// --no-check 只整理，有错误也返回 0
+	os.WriteFile(md, []byte("---\ntitle: 好文章\ncover: nope.png\n---\n正文\n"), 0o644)
+	if code, out, errOut := run(t, "", "--config", cfgPath, "format", md, "--no-check"); code != 0 {
+		t.Fatalf("--no-check: %d %s %s", code, out, errOut)
+	}
+	// check 子命令已移除
+	if code, _, _ := run(t, "", "--config", cfgPath, "check", md); code != 2 {
+		t.Fatalf("check should be unknown command, got %d", code)
 	}
 }
 

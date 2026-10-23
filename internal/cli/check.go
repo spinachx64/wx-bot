@@ -303,36 +303,16 @@ func formatIssues(file string, issues []Issue) string {
 	return b.String()
 }
 
-func cmdCheck(e *env, args []string) error {
-	fs := newFlagSet(e, "check", "<md|-> [--offline] [--strict]")
-	offline := fs.Bool("offline", false, "不连服务端（跳过皮肤检查）")
-	strict := fs.Bool("strict", false, "有警告也返回失败")
-	pos, err := parseArgs(fs, args, 1)
-	if err != nil {
-		return err
-	}
-	a, err := e.readArticle(pos[0])
-	if err != nil {
-		return err
-	}
-	var skins []string
-	if !*offline && e.cfg.Token != "" {
-		skins = e.fetchSkins(e.ctx)
-	}
-	issues := CheckArticle(a, skins)
-	failed := countLevel(issues, levelError) > 0 || (*strict && len(issues) > 0)
-	text := formatIssues(pos[0], issues)
-	if len(issues) == 0 {
-		text = "检查通过：" + a.Meta.Title
-	}
-	if !e.json {
+// reportIssues 输出检查结果（format 调用）。toErr 为真时文本写 stderr，
+// 用于 -o - 时正文占用了 stdout。有错误（或 strict 时有警告）返回 errReported
+func (e *env) reportIssues(file string, issues []Issue, strict, toErr bool) error {
+	failed := countLevel(issues, levelError) > 0 || (strict && len(issues) > 0)
+	if len(issues) > 0 {
 		w := e.out
-		if failed {
+		if failed || toErr {
 			w = e.errw
 		}
-		fmt.Fprintln(w, text)
-	} else {
-		e.writeJSON(map[string]any{"ok": !failed, "title": a.Meta.Title, "issues": issues})
+		fmt.Fprintln(w, formatIssues(file, issues))
 	}
 	if failed {
 		return errReported

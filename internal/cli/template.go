@@ -11,9 +11,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 模板里的示例文字；wxctl check 发现它们还在时会报错，提醒替换
+// 模板里的示例文字；wxctl format 发现它们还在时会报错，提醒替换
 const (
-	tplBodyHint    = "在这里写正文，写完运行 wxctl check 检查。"
+	tplBodyHint    = "在这里写正文，写完运行 wxctl format 整理并检查。"
 	tplSectionHint = "小标题下面的内容。"
 )
 
@@ -131,7 +131,7 @@ func cmdNew(e *env, args []string) error {
 	}
 	abs, _ := filepath.Abs(path)
 	return e.result(map[string]any{"path": abs, "title": t},
-		fmt.Sprintf("已创建 %s\n替换正文、封面和示例图片后，运行 wxctl check %s 检查", abs, path))
+		fmt.Sprintf("已创建 %s\n替换正文、封面和示例图片后，运行 wxctl format %s 整理并检查", abs, path))
 }
 
 // findCover 猜封面：同目录的 cover.*，否则正文第一张图片
@@ -148,11 +148,15 @@ func findCover(a *Article) string {
 }
 
 // cmdFormat 把普通 markdown 整理成带完整 frontmatter 的文章：已有字段保留，
-// 没写的取配置默认值；开头的 # 标题移到 title。可重复执行
+// 没写的取配置默认值；开头的 # 标题移到 title。可重复执行。
+// 整理后对结果做提交前检查，有错误时文件照样写出，但退出码为 1
 func cmdFormat(e *env, args []string) error {
-	fs := newFlagSet(e, "format", "<file.md|-> [-o 输出文件|-] [--cover 封面]")
+	fs := newFlagSet(e, "format", "<file.md|-> [-o 输出文件|-] [--cover 封面] [--offline] [--strict] [--no-check]")
 	out := fs.String("o", "", "输出到另一个文件，- 为标准输出；默认原地改写")
 	cover := fs.String("cover", "", "封面图，默认取同目录 cover.* 或正文第一张图")
+	offline := fs.Bool("offline", false, "检查时不连服务端（跳过皮肤检查）")
+	strict := fs.Bool("strict", false, "有警告也返回失败")
+	noCheck := fs.Bool("no-check", false, "只整理，不检查")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
 		return err
@@ -166,10 +170,28 @@ func cmdFormat(e *env, args []string) error {
 	m.Cover = first(*cover, m.Cover, findCover(a))
 	text := renderFront(m, first(m.Skin, e.cfg.Skin)) + "\n" + strings.TrimLeft(a.Markdown, "\r\n")
 
+	// 检查整理后的内容，行号对应写出的文件
+	issues := []Issue{}
+	if !*noCheck {
+		fa, err := ParseArticle([]byte(text), a.Dir)
+		if err != nil {
+			return err
+		}
+		var skins []string
+		if !*offline && e.cfg.Token != "" {
+			skins = e.fetchSkins(e.ctx)
+		}
+		if found := CheckArticle(fa, skins); found != nil {
+			issues = found // 没问题时保持空切片，JSON 输出 [] 而不是 null
+		}
+	}
+
 	dst := first(*out, pos[0])
 	if dst == "-" {
-		_, err := io.WriteString(e.out, text)
-		return err
+		if _, err := io.WriteString(e.out, text); err != nil {
+			return err
+		}
+		return e.reportIssues(dst, issues, *strict, true)
 	}
 	tmp := dst + ".tmp"
 	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
@@ -180,10 +202,24 @@ func cmdFormat(e *env, args []string) error {
 		return err
 	}
 	abs, _ := filepath.Abs(dst)
-	msg := fmt.Sprintf("已整理 %s（标题：%s）", abs, m.Title)
-	if m.Cover == "" {
-		msg += "\n还没有封面，请在 frontmatter 填写 cover"
+	failed := countLevel(issues, levelError) > 0 || (*strict && len(issues) > 0)
+	if e.json {
+		if err := e.writeJSON(map[string]any{"ok": !failed, "path": abs, "title": m.Title, "cover": m.Cover, "issues": issues}); err != nil {
+			return err
+		}
+		if failed {
+			return errReported
+		}
+		return nil
 	}
-	return e.result(map[string]any{"path": abs, "title": m.Title, "cover": m.Cover},
-		msg+"\n运行 wxctl check "+dst+" 检查")
+	msg := fmt.Sprintf("已整理 %s（标题：%s）", abs, m.Title)
+	if *noCheck {
+		fmt.Fprintln(e.out, msg)
+		return nil
+	}
+	if len(issues) == 0 {
+		msg += "\n检查通过"
+	}
+	fmt.Fprintln(e.out, msg)
+	return e.reportIssues(dst, issues, *strict, false)
 }

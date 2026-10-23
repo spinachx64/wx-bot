@@ -100,9 +100,9 @@ func TestFormatPlainMarkdown(t *testing.T) {
 		!strings.Contains(a.Markdown, "第一段") {
 		t.Fatalf("formatted: %+v\n%s", m, first)
 	}
-	// 格式化后的文件能通过检查
-	if code, out, errOut := run(t, "", "--config", cfgPath, "check", md, "--offline"); code != 0 {
-		t.Fatalf("check: %d %s %s", code, out, errOut)
+	// 格式化后的文件能通过检查（format 自带检查，--json 输出 issues）
+	if code, out, errOut := run(t, "", "--config", cfgPath, "--json", "format", md, "--offline"); code != 0 || !strings.Contains(out, `"issues":[]`) {
+		t.Fatalf("format check: %d %s %s", code, out, errOut)
 	}
 
 	// 重复执行结果不变；已有字段不被配置覆盖
@@ -121,9 +121,14 @@ func TestFormatPlainMarkdown(t *testing.T) {
 	// -o - 输出到标准输出，不改原文件
 	plain := filepath.Join(dir, "plain.md")
 	os.WriteFile(plain, []byte("正文\n"), 0o644)
-	code, out, _ := run(t, "", "--config", cfgPath, "format", plain, "-o", "-", "--cover", "c.png")
+	code, out, _ := run(t, "", "--config", cfgPath, "format", plain, "-o", "-", "--cover", "c.png", "--no-check")
 	if code != 0 || !strings.Contains(out, "title: plain") || !strings.Contains(out, "cover: c.png") {
 		t.Fatalf("stdout: %d %s", code, out)
+	}
+	// 检查不通过（c.png 不存在）时退出码 1，问题写 stderr，stdout 只有正文
+	code, out, errOut := run(t, "", "--config", cfgPath, "format", plain, "-o", "-", "--cover", "c.png", "--offline")
+	if code != 1 || strings.Contains(out, "图片不存在") || !strings.Contains(errOut, "图片不存在") || !strings.HasPrefix(out, "---\n") {
+		t.Fatalf("stdout with issues: %d\nout=%s\nerr=%s", code, out, errOut)
 	}
 	if data, _ := os.ReadFile(plain); string(data) != "正文\n" {
 		t.Fatalf("source modified: %s", data)

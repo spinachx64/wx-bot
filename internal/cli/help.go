@@ -52,27 +52,22 @@ var docs = map[string]cmdDoc{
 		summary: "创建带 frontmatter 的文章模板",
 		details: "参数是标题时，在当前目录生成 <标题>.md；以 .md 结尾或带目录时按路径处理（标题取文件名）。\n" +
 			"作者、评论设置取配置 defaults（wxctl config set 设置）。不覆盖已有文件（除非 --force）；传 - 输出到标准输出。\n" +
-			"模板里的示例文字和 images/example.png 没替换时，check 会报错。",
+			"模板里的示例文字和 images/example.png 没替换时，format 会报错。",
 		examples: []string{"wxctl new 我的新文章", "wxctl new wx/post.md --title 标题 --author 作者", "wxctl new - > post.md"},
 		output:   `{"ok":true,"path":"/abs/我的新文章.md","title":"我的新文章"}`,
 	},
 	"format": {
-		summary: "把普通 markdown 整理成带完整 frontmatter 的文章",
+		summary: "整理成带完整 frontmatter 的文章，并做提交前检查",
 		details: "已有 frontmatter 字段保留；没写的取配置 defaults；开头的 # 标题移到 title，否则用文件名。\n" +
 			"封面：--cover > frontmatter cover > 同目录 cover.* > 正文第一张图。\n" +
-			"默认原地改写（可重复执行），-o 写到另一个文件，-o - 输出到标准输出。",
-		examples: []string{"wxctl format notes.md", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format notes.md -o -"},
-		output:   `{"ok":true,"path":"/abs/notes.md","title":"...","cover":"cover.png"}`,
-	},
-	"check": {
-		summary: "提交前检查文章，提前发现问题",
-		details: "不上传任何东西。错误（error）会导致 draft 失败，必须修；警告（warning）只是提醒。\n" +
+			"默认原地改写（可重复执行），-o 写到另一个文件，-o - 输出到标准输出（检查结果写 stderr）。\n" +
+			"整理后检查结果，不上传任何东西。错误（error）会导致 draft 失败，必须修；警告（warning）只是提醒。\n" +
 			"检查项：标题/作者/摘要长度（32/16/128 字）、封面和正文图片是否存在且能压到限制以内、\n" +
 			"模板残留、皮肤名、阅读原文链接、``` 是否成对、未知 frontmatter 字段、\n" +
 			"HTML 标签（会按文字显示）、外部链接（公众号里不能点）、正文里重复的一级标题。\n" +
-			"退出码：0 通过；1 有错误（或 --strict 时有警告）。",
-		examples: []string{"wxctl check post.md", "wxctl check post.md --strict", "wxctl --json check post.md --offline"},
-		output:   `{"ok":false,"title":"...","issues":[{"level":"error","line":5,"field":"cover","message":"图片不存在：..."}]}`,
+			"退出码：0 通过；1 有错误（或 --strict 时有警告），文件仍会写出。--no-check 只整理不检查。",
+		examples: []string{"wxctl format notes.md", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format post.md --strict", "wxctl --json format post.md --offline"},
+		output:   `{"ok":false,"path":"/abs/notes.md","title":"...","cover":"cover.png","issues":[{"level":"error","line":5,"field":"cover","message":"图片不存在：..."}]}`,
 	},
 	"render": {
 		summary:  "把 markdown 渲染成公众号 HTML（不建草稿）",
@@ -82,7 +77,7 @@ var docs = map[string]cmdDoc{
 	},
 	"draft": {
 		summary: "上传图片和封面，新建或更新草稿",
-		details: "流程：check（有错误就停止，什么都不上传）→ 上传正文图片并替换地址 → 上传封面 → 新建/更新草稿。\n" +
+		details: "流程：检查（与 format 相同，有错误就停止，什么都不上传）→ 上传正文图片并替换地址 → 上传封面 → 新建/更新草稿。\n" +
 			"有 --media-id 或 frontmatter media_id 时更新，否则新建。新建必须有封面（cover / --cover / --thumb）。\n" +
 			"图片按内容 hash 缓存，重复提交不会重复上传。参数优先于 frontmatter。\n" +
 			"文件提交成功后自动把 media_id 写回原文件的 frontmatter，下次提交会更新同一篇；标准输入不回写。",
@@ -121,7 +116,7 @@ var docs = map[string]cmdDoc{
 }
 
 // cmdOrder help 里的命令顺序
-var cmdOrder = []string{"login", "logout", "config", "ping", "skins", "new", "format", "check", "render", "draft", "drafts", "publish", "status", "upload"}
+var cmdOrder = []string{"login", "logout", "config", "ping", "skins", "new", "format", "render", "draft", "drafts", "publish", "status", "upload"}
 
 const agentGuide = `# wxctl 使用指南（给 agent）
 
@@ -132,15 +127,15 @@ wxctl 负责读文件、上传图片、组装请求。
 - 始终加 --json：成功和失败都输出一行 JSON 到 stdout，字段 ok 表示成败。
   失败时有 error，服务端/微信错误还会带 status、errcode、errmsg。
 - 进度日志（上传了哪些图）写在 stderr，解析结果只看 stdout。
-- 退出码：0 成功；1 执行失败（网络、服务端、微信错误、check 不通过）；2 参数用法错误。
+- 退出码：0 成功；1 执行失败（网络、服务端、微信错误、format 检查不通过）；2 参数用法错误。
 - 文章路径可以写 -，从标准输入读；此时图片相对路径以当前目录为基准。
 - 服务器上用 --mode server（默认连 http://127.0.0.1:1240，token 读 WXBOT_TOKEN 或 GZH_TOKEN）。
 
 ## 推荐流程
 1. wxctl --json ping                      确认服务和 token 可用
 2. wxctl --json new post.md --title 标题  （新文章）生成模板，再写入正文、封面
-   wxctl --json format notes.md           （已有 markdown）补全 frontmatter，默认值取自配置
-3. wxctl --json check post.md             有 error 就按 line/message 修改，直到 ok:true
+3. wxctl --json format post.md            补全 frontmatter 并检查；有 error 就按 line/message 修改，
+                                          重复执行直到 ok:true（已有 markdown 也从这一步开始）
 4. wxctl --json draft post.md             新建草稿，media_id 自动写回原文件
 5. 之后修改再执行 draft 就是更新同一篇；stdin 输入需自行保存 media_id
 6. wxctl --json drafts                    需要时核对草稿列表

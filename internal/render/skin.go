@@ -42,6 +42,8 @@ type rule struct {
 var (
 	labelRe = regexp.MustCompile(`^\s*/\*\s*([^\n*]+)`)
 	propRe  = regexp.MustCompile(`^-?[a-z][a-z0-9-]*$`)
+	// 连续分号（中间可夹空白）
+	emptyDeclRe = regexp.MustCompile(`;(\s*;)+`)
 )
 
 func parseSkin(name string, data []byte) (*Skin, error) {
@@ -54,7 +56,8 @@ func parseSkin(name string, data []byte) (*Skin, error) {
 		}
 	}
 
-	sheet, err := parser.Parse(string(data))
+	// mdnice 主题里常见「color: red;;」，douceur 遇到空声明会直接报错
+	sheet, err := parser.Parse(emptyDeclRe.ReplaceAllString(string(data), ";"))
 	if err != nil {
 		return nil, fmt.Errorf("skin %s: %w", name, err)
 	}

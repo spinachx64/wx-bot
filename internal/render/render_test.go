@@ -191,3 +191,31 @@ func TestCodeTextColorSurvivesCodeStyleStrip(t *testing.T) {
 		t.Fatalf("pre must keep background and avoid font-family: %s", pre)
 	}
 }
+
+// mdnice 主题靠 h2 .content 做色块；「;;」这类空声明不能让皮肤加载失败
+func TestHeadingContentSpanAndEmptyDecl(t *testing.T) {
+	dir := t.TempDir()
+	skin := `/* 块 */
+#nice h2 .content { background: #ef7060;; color: #ffffff; }
+#nice h2 .prefix { display: none; }
+`
+	os.WriteFile(filepath.Join(dir, "block.css"), []byte(skin), 0o644)
+	r := newTestRenderer(t, dir)
+	out := mustRender(t, r, "## 标题\n\n### 三级\n", "block")
+	if !strings.Contains(out, `<h2><span style="background: #ef7060; color: #ffffff;">标题</span></h2>`) {
+		t.Fatalf("content span not styled or prefix kept: %s", out)
+	}
+	if !strings.Contains(out, "<h3>三级</h3>") {
+		t.Fatalf("unstyled content span should be unwrapped: %s", out)
+	}
+}
+
+func TestBuiltinSkinsLoadClean(t *testing.T) {
+	r := newTestRenderer(t, "")
+	for _, s := range r.Skins().List() {
+		out := mustRender(t, r, "# 一\n\n## 二\n\n> 引用\n\n```go\nx := 1\n```\n", s.Name)
+		if strings.Contains(out, "class=") {
+			t.Fatalf("skin %s leaked class: %s", s.Name, out)
+		}
+	}
+}

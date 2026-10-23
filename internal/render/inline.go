@@ -254,16 +254,37 @@ func cleanup(root *html.Node) {
 	removeAttr(root, "id")
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
+		for c := n.FirstChild; c != nil; {
+			next := c.NextSibling
 			if c.Type != html.ElementNode {
+				c = next
 				continue
+			}
+			// 没被主题用到的 prefix/suffix 是空 span，或被 display:none 隐藏，直接去掉
+			if c.DataAtom == atom.Span && c.FirstChild == nil {
+				st := parseStyle(getAttr(c, "style"))
+				if len(st.list) == 0 || strings.TrimSpace(st.get("display")) == "none" {
+					n.RemoveChild(c)
+					c = next
+					continue
+				}
 			}
 			if c.DataAtom == atom.Pre {
 				fixPre(c)
 			}
+			// 主题没给样式的标题 content span 只是包装，拆掉保持输出干净
+			unwrap := c.DataAtom == atom.Span && getAttr(c, "class") == "content" && !hasAttr(c, "style")
 			removeAttr(c, "class")
 			removeAttr(c, "data-line")
 			walk(c)
+			if unwrap {
+				for gc := c.FirstChild; gc != nil; gc = c.FirstChild {
+					c.RemoveChild(gc)
+					n.InsertBefore(gc, c)
+				}
+				n.RemoveChild(c)
+			}
+			c = next
 		}
 	}
 	walk(root)

@@ -99,6 +99,8 @@ func transform(n *html.Node) {
 				n.RemoveChild(c)
 				c = p
 			}
+		case headingAtoms[c.DataAtom]:
+			wrapHeading(c)
 		}
 		if c.Type == html.ElementNode {
 			transform(c)
@@ -158,6 +160,28 @@ func wrapListItem(li *html.Node) {
 	setAttr(sec, "style", "margin: 0; line-height: 1.80;")
 	moveChildren(li, sec)
 	li.AppendChild(sec)
+}
+
+var headingAtoms = map[atom.Atom]bool{
+	atom.H1: true, atom.H2: true, atom.H3: true, atom.H4: true, atom.H5: true, atom.H6: true,
+}
+
+// wrapHeading 与 mdnice 一致，标题内容包成 prefix/content/suffix 三个 span，
+// 移植来的主题靠 h2 .content 之类的选择器做色块、装饰
+func wrapHeading(h *html.Node) {
+	if h.FirstChild == nil {
+		return
+	}
+	span := func(cls string) *html.Node {
+		s := elem(atom.Span)
+		setAttr(s, "class", cls)
+		return s
+	}
+	content := span("content")
+	moveChildren(h, content)
+	h.AppendChild(span("prefix"))
+	h.AppendChild(content)
+	h.AppendChild(span("suffix"))
 }
 
 func hasBlockDescendant(n *html.Node) bool {

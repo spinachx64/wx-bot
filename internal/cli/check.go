@@ -49,6 +49,7 @@ func (c *checker) add(level string, line int, field, format string, args ...any)
 var knownMeta = map[string]bool{
 	"title": true, "author": true, "digest": true, "cover": true, "theme": true,
 	"source_url": true, "media_id": true, "open_comment": true, "fans_comment": true,
+	"article_type": true, "images": true,
 }
 
 // fieldLine 返回 frontmatter 中 key 所在的行号（frontmatter 从第 2 行开始）
@@ -70,8 +71,12 @@ func (c *checker) bodyLine(off int) int {
 func CheckArticle(a *Article, themes []string) []Issue {
 	c := &checker{a: a}
 	c.checkMeta(themes)
-	c.checkCover()
-	c.checkBody()
+	if a.Meta.articleType() == "newspic" {
+		c.checkNewspic()
+	} else {
+		c.checkCover()
+		c.checkBody()
+	}
 	sort.SliceStable(c.issues, func(i, j int) bool {
 		if (c.issues[i].Level == levelError) != (c.issues[j].Level == levelError) {
 			return c.issues[i].Level == levelError
@@ -83,6 +88,9 @@ func CheckArticle(a *Article, themes []string) []Issue {
 
 func (c *checker) checkMeta(themes []string) {
 	m := c.a.Meta
+	if m.articleType() != "news" && m.articleType() != "newspic" {
+		c.add(levelError, c.fieldLine("article_type"), "article_type", "article_type 只能是 news 或 newspic")
+	}
 	if c.a.front != "" {
 		var raw map[string]any
 		if yaml.Unmarshal([]byte(c.a.front), &raw) == nil {
@@ -114,12 +122,42 @@ func (c *checker) checkMeta(themes []string) {
 	if m.FansComment != nil && *m.FansComment && m.OpenComment != nil && !*m.OpenComment {
 		c.add(levelWarn, c.fieldLine("fans_comment"), "fans_comment", "关闭评论时 fans_comment 不生效")
 	}
+	if m.articleType() == "newspic" {
+		return // 图片消息不使用主题和独立封面。
+	}
 	if isThemeFile(m.Theme) {
 		if _, err := readThemeCSS(themePath(m.Theme, c.a.Dir)); err != nil {
 			c.add(levelError, c.fieldLine("theme"), "theme", "主题文件不可用：%v", err)
 		}
 	} else if m.Theme != "" && themes != nil && !contains(themes, m.Theme) {
 		c.add(levelError, c.fieldLine("theme"), "theme", "主题 %q 不存在，可用：%s", m.Theme, strings.Join(themes, ", "))
+	}
+}
+
+func (c *checker) checkNewspic() {
+	if err := c.a.validateNewspic(); err != nil {
+		c.add(levelError, c.fieldLine("images"), "images", "%v", err)
+	}
+	for _, src := range c.a.Meta.Images {
+		kind, _, err := imageSource(src)
+		if err != nil || kind == "media_id" {
+			continue
+		}
+		if strings.HasSuffix(src, "images/example.png") {
+			c.add(levelError, c.fieldLine("images"), "images", "还有模板示例图片 %s，请替换或删除", src)
+			continue
+		}
+		if kind == "url" {
+			c.add(levelWarn, c.fieldLine("images"), "images", "外链图片 %s 会在提交时下载并上传为永久素材", src)
+			continue
+		}
+		c.checkImage(c.fieldLine("images"), "images", src, maxCoverImage)
+	}
+	if strings.Contains(c.a.Markdown, tplBodyHint) || strings.Contains(c.a.Markdown, tplSectionHint) {
+		c.add(levelError, c.a.bodyLine, "content", "正文还有模板示例文字，请替换")
+	}
+	if len(c.a.Markdown) >= 1<<20 || utf8.RuneCountInString(c.a.Markdown) >= maxContent {
+		c.add(levelError, 0, "content", "正文必须少于 2 万字符和 1MB")
 	}
 }
 

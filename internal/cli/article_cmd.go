@@ -43,6 +43,12 @@ func cmdRender(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := a.Meta.setArticleType(""); err != nil {
+		return err
+	}
+	if a.Meta.articleType() == "newspic" {
+		return usageError("newspic 正文按纯文本提交，无需 render；请使用 wxctl format / draft")
+	}
 	name, css, err := e.resolveTheme(*theme, a)
 	if err != nil {
 		return err
@@ -61,8 +67,9 @@ func cmdRender(e *env, args []string) error {
 
 func cmdDraft(e *env, args []string) error {
 	fs := newFlagSet(e, "draft", "<md|-> [参数]")
+	typ := fs.String("type", "", "消息类型：news 或 newspic，默认读取 frontmatter，否则 news")
 	theme := fs.String("theme", "", "主题名或本地 .css 文件")
-	cover := fs.String("cover", "", "封面图路径或 URL（覆盖 frontmatter 的 cover）")
+	cover := fs.String("cover", "", "封面图绝对/相对路径或 URL（覆盖 frontmatter 的 cover）")
 	thumb := fs.String("thumb", "", "直接使用已有的封面 media_id")
 	mediaID := fs.String("media-id", "", "更新指定草稿，默认读取 frontmatter media_id，否则新建")
 	index := fs.Int("index", 0, "更新草稿中的第几篇（从 0 开始）")
@@ -70,16 +77,23 @@ func cmdDraft(e *env, args []string) error {
 	author := fs.String("author", "", "作者")
 	digest := fs.String("digest", "", "摘要")
 	publish := fs.Bool("publish", false, "保存草稿后立即发布")
-	noCheck := fs.Bool("no-check", false, "跳过提交前的检查")
+	noCheck := fs.Bool("no-check", false, "跳过可选内容检查，类型和图片结构仍会检查")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
 		return err
+	}
+	if *index < 0 {
+		return usageError("index must be >= 0")
 	}
 	a, err := e.readArticle(pos[0])
 	if err != nil {
 		return err
 	}
+	originalType := a.Meta.articleType()
 	m := &a.Meta
+	if err := m.setArticleType(*typ); err != nil {
+		return err
+	}
 	m.Title = first(*title, m.Title)
 	m.Author = first(*author, m.Author)
 	m.Digest = first(*digest, m.Digest)
@@ -87,12 +101,24 @@ func cmdDraft(e *env, args []string) error {
 	if m.Title == "" {
 		return usageError("title is required: add frontmatter title, a leading # heading, or --title")
 	}
-	m.Cover = first(*cover, m.Cover)
-	if m.Cover == "" && *thumb == "" {
-		return usageError("cover is required: add frontmatter cover, --cover or --thumb")
+	if m.articleType() == "newspic" {
+		if *cover != "" || *thumb != "" || *theme != "" {
+			return usageError("newspic 不支持 --cover / --thumb / --theme，第一张图片即为封面")
+		}
+		if err := a.validateNewspic(); err != nil {
+			return err
+		}
+	} else {
+		if len(m.Images) > 0 {
+			return usageError("news 不使用 images，请指定 --type newspic 或将图片移到正文")
+		}
+		m.Cover = first(*cover, m.Cover)
+		if m.Cover == "" && *thumb == "" {
+			return usageError("cover is required: add frontmatter cover, --cover or --thumb")
+		}
 	}
 
-	// 上传前先做离线检查，有错误就不动线上数据
+	// 上传前先做离线检查，有错误就不动线上数据。
 	if !*noCheck {
 		var errs []Issue
 		for _, is := range CheckArticle(a, nil) {
@@ -101,50 +127,20 @@ func cmdDraft(e *env, args []string) error {
 			}
 		}
 		if len(errs) > 0 {
-			return fmt.Errorf("check failed, nothing uploaded (use --no-check to skip):\n%s", formatIssues(pos[0], errs))
+			return fmt.Errorf("check failed, nothing uploaded (use --no-check to skip optional checks):\n%s", formatIssues(pos[0], errs))
 		}
-	}
-
-	// 本地主题文件在上传图片前读取，读不到就什么都不动
-	themeName, themeCSS, err := e.resolveTheme(*theme, a)
-	if err != nil {
-		return err
-	}
-
-	up := e.uploader()
-	if err := up.PrepareArticle(e.ctx, a); err != nil {
-		return err
-	}
-	thumbID := *thumb
-	if thumbID == "" {
-		src := first(*cover, m.Cover)
-		if src == "" {
-			return usageError("cover is required: add frontmatter cover, --cover or --thumb")
-		}
-		if thumbID, err = up.Cover(e.ctx, a, src); err != nil {
-			return fmt.Errorf("cover: %w", err)
-		}
-	}
-
-	article := map[string]any{
-		"article_type":          "news",
-		"title":                 m.Title,
-		"author":                m.Author,
-		"digest":                m.Digest,
-		"markdown":              a.Markdown,
-		"theme":                 themeName,
-		"thumb_media_id":        thumbID,
-		"content_source_url":    m.SourceURL,
-		"only_fans_can_comment": boolInt(m.FansComment != nil && *m.FansComment),
-	}
-	if themeCSS != "" {
-		article["theme_css"] = themeCSS
-	}
-	if m.OpenComment != nil {
-		article["need_open_comment"] = boolInt(*m.OpenComment)
 	}
 
 	id := first(*mediaID, m.MediaID)
+	if id != "" {
+		if err := e.checkDraftType(id, *index, m.articleType()); err != nil {
+			return err
+		}
+	}
+	article, err := e.buildDraftArticle(a, *theme, *thumb)
+	if err != nil {
+		return err
+	}
 	action := "updated"
 	if id == "" {
 		action = "created"
@@ -158,15 +154,20 @@ func cmdDraft(e *env, args []string) error {
 		return err
 	}
 
-	// 先记录 ID，再处理可选发布；发布失败也能继续更新已保存的草稿。
-	if a.Path != "" && m.MediaID != id {
-		if err := a.saveMediaID(id); err != nil {
-			return fmt.Errorf("draft saved (media_id: %s), but could not write media_id to %s; add it manually before retrying: %w", id, a.Path, err)
+	// 先记录 ID 和有效类型，再处理可选发布，重试仍指向同一篇、同一类型。
+	if a.Path != "" && (m.MediaID != id || originalType != m.articleType()) {
+		if err := a.saveDraftMeta(id, originalType != m.articleType()); err != nil {
+			return fmt.Errorf("draft saved (media_id: %s, article_type: %s), but could not write metadata to %s; add it manually before retrying: %w", id, m.articleType(), a.Path, err)
 		}
-		e.logf("media_id 已写回 %s", a.Path)
+		e.logf("草稿信息已写回 %s", a.Path)
 	}
 
-	v := map[string]any{"action": action, "media_id": id, "title": m.Title, "thumb_media_id": thumbID}
+	v := map[string]any{"action": action, "media_id": id, "title": m.Title, "article_type": m.articleType()}
+	if m.articleType() == "newspic" {
+		v["image_count"] = len(m.Images)
+	} else {
+		v["thumb_media_id"] = article["thumb_media_id"]
+	}
 	text := fmt.Sprintf("草稿已%s：%s\nmedia_id: %s", map[string]string{"created": "新建", "updated": "更新"}[action], m.Title, id)
 	if *publish {
 		pid, err := e.client.PublishSubmit(e.ctx, id)
@@ -177,6 +178,74 @@ func cmdDraft(e *env, args []string) error {
 		text += "\n已提交发布，publish_id: " + pid + "\n用 wxctl status " + pid + " 查询结果"
 	}
 	return e.result(v, text)
+}
+
+// 更新前读取目标文章的类型，避免把已有图文误改为图片消息，或反向覆盖。
+func (e *env) checkDraftType(id string, index int, typ string) error {
+	var out struct {
+		NewsItem []struct {
+			ArticleType string `json:"article_type"`
+		} `json:"news_item"`
+	}
+	if err := e.client.getJSON(e.ctx, "/api/v1/drafts/"+url.PathEscape(id), &out); err != nil {
+		return fmt.Errorf("read draft before update: %w", err)
+	}
+	if index >= len(out.NewsItem) {
+		return fmt.Errorf("draft index %d is out of range (%d articles)", index, len(out.NewsItem))
+	}
+	if current := first(out.NewsItem[index].ArticleType, "news"); current != typ {
+		return fmt.Errorf("草稿类型为 %s，不能更新为 %s；请移除 media_id 并新建草稿", current, typ)
+	}
+	return nil
+}
+
+func (e *env) buildDraftArticle(a *Article, theme, thumb string) (map[string]any, error) {
+	m := a.Meta
+	article := map[string]any{
+		"article_type": m.articleType(), "title": m.Title,
+		"only_fans_can_comment": boolInt(m.FansComment != nil && *m.FansComment),
+	}
+	if m.OpenComment != nil {
+		article["need_open_comment"] = boolInt(*m.OpenComment)
+	}
+	up := e.uploader()
+	if m.articleType() == "newspic" {
+		ids, err := up.MaterialImages(e.ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		images := make([]map[string]string, len(ids))
+		for i, id := range ids {
+			images[i] = map[string]string{"image_media_id": id}
+		}
+		article["content"] = a.Markdown
+		article["image_info"] = map[string]any{"image_list": images}
+		if m.Author != "" {
+			article["author"] = m.Author
+		}
+		return article, nil
+	}
+	// 主题在上传前读取，主题文件有误时不占用线上素材。
+	name, css, err := e.resolveTheme(theme, a)
+	if err != nil {
+		return nil, err
+	}
+	if err := up.PrepareArticle(e.ctx, a); err != nil {
+		return nil, err
+	}
+	if thumb == "" {
+		thumb, err = up.Cover(e.ctx, a, m.Cover)
+		if err != nil {
+			return nil, fmt.Errorf("cover: %w", err)
+		}
+	}
+	article["author"], article["digest"] = m.Author, m.Digest
+	article["markdown"], article["theme"] = a.Markdown, name
+	article["thumb_media_id"], article["content_source_url"] = thumb, m.SourceURL
+	if css != "" {
+		article["theme_css"] = css
+	}
+	return article, nil
 }
 
 // cmdDrafts 列出草稿，只取 media_id 和标题；多图文草稿的标题用「 | 」连接

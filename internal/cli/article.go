@@ -15,15 +15,17 @@ import (
 
 // Meta 文章 frontmatter，所有字段可选
 type Meta struct {
-	Title       string `yaml:"title"`
-	Author      string `yaml:"author"`
-	Digest      string `yaml:"digest"`
-	Cover       string `yaml:"cover"`        // 封面图路径或 URL
-	Theme       string `yaml:"theme"`        // 主题
-	SourceURL   string `yaml:"source_url"`   // 阅读原文
-	MediaID     string `yaml:"media_id"`     // 指定要更新的草稿
-	OpenComment *bool  `yaml:"open_comment"` // 打开评论，不写时由服务端默认打开
-	FansComment *bool  `yaml:"fans_comment"` // 仅粉丝可评论
+	ArticleType string   `yaml:"article_type"`
+	Images      []string `yaml:"images"` // 本地绝对/相对路径、URL 或 media_id:ID
+	Title       string   `yaml:"title"`
+	Author      string   `yaml:"author"`
+	Digest      string   `yaml:"digest"`
+	Cover       string   `yaml:"cover"`        // 封面图路径或 URL
+	Theme       string   `yaml:"theme"`        // 主题
+	SourceURL   string   `yaml:"source_url"`   // 阅读原文
+	MediaID     string   `yaml:"media_id"`     // 指定要更新的草稿
+	OpenComment *bool    `yaml:"open_comment"` // 打开评论，不写时由服务端默认打开
+	FansComment *bool    `yaml:"fans_comment"` // 仅粉丝可评论
 }
 
 // Article 解析后的本地文章
@@ -93,7 +95,7 @@ func ParseArticle(data []byte, dir string) (*Article, error) {
 		a.bodyLine += strings.Count(a.Markdown[:m[1]], "\n")
 		a.Markdown = a.Markdown[m[1]:]
 	}
-	if strings.TrimSpace(a.Markdown) == "" {
+	if strings.TrimSpace(a.Markdown) == "" && !(a.Meta.ArticleType == "newspic" && len(a.Meta.Images) > 0) {
 		return nil, errors.New("article body is empty")
 	}
 	return a, nil

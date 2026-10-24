@@ -30,11 +30,22 @@ func renderFront(m Meta, theme string) string {
 	if m.MediaID != "" {
 		mediaID = "media_id: " + q(m.MediaID) + " # 更新这篇草稿；删掉则新建"
 	}
+	if m.articleType() == "newspic" {
+		images := "images: [] # 1-20 张，第一张为封面；也可先在正文用 ![]() 引用，再运行 format\n"
+		if len(m.Images) > 0 {
+			b, _ := yaml.Marshal(struct {
+				Images []string `yaml:"images"`
+			}{m.Images})
+			images = string(b)
+		}
+		return fmt.Sprintf("---\narticle_type: newspic\ntitle: %s # 标题，不超过 32 个字\nauthor: %s\n%sopen_comment: %t\nfans_comment: %t\n%s\n---\n",
+			q(m.Title), q(m.Author), images, open, fans, mediaID)
+	}
 	return fmt.Sprintf(`---
 title: %s # 标题，不超过 32 个字
 author: %s # 作者，不超过 16 个字
 digest: %s # 摘要，不超过 128 个字；留空时微信取正文开头
-cover: %s # 封面图，相对本文件的路径或 URL（必填）
+cover: %s # 封面图，绝对路径、相对本文件的路径或 URL（必填）
 theme: %s # 主题，留空用服务端默认，wxctl themes 查看可用主题
 source_url: %s # 阅读原文链接
 open_comment: %t # 打开评论
@@ -57,6 +68,12 @@ func articleTemplate(title, author string, d Defaults, theme string) string {
 
 ![图片说明](images/example.png)
 `, tplBodyHint, tplSectionHint)
+}
+
+func newspicTemplate(title, author string, d Defaults) string {
+	m := Meta{ArticleType: "newspic", Title: title, Author: author}
+	d.apply(&m)
+	return renderFront(m, "") + "\n" + tplBodyHint + "\n\n![图片说明](images/example.png)\n"
 }
 
 // fileNameFor 把标题变成安全的文件名
@@ -100,7 +117,8 @@ func writeNew(path, content string, force bool) error {
 }
 
 func cmdNew(e *env, args []string) error {
-	fs := newFlagSet(e, "new", "<标题|file.md|-> [--title 标题] [--author 作者] [--force]")
+	fs := newFlagSet(e, "new", "<标题|file.md|-> [--type news|newspic] [--title 标题] [--author 作者] [--force]")
+	typ := fs.String("type", "news", "消息类型：news（图文，默认）或 newspic（图片）")
 	title := fs.String("title", "", "标题，默认用参数本身（是路径时用文件名）")
 	author := fs.String("author", "", "作者，默认取配置 defaults.author")
 	force := fs.Bool("force", false, "覆盖已存在的文件")
@@ -108,9 +126,19 @@ func cmdNew(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	m := Meta{}
+	if err := m.setArticleType(*typ); err != nil {
+		return err
+	}
+	template := func(title string) string {
+		if m.articleType() == "newspic" {
+			return newspicTemplate(title, *author, e.cfg.Defaults)
+		}
+		return articleTemplate(title, *author, e.cfg.Defaults, e.cfg.Theme)
+	}
 	arg := pos[0]
 	if arg == "-" {
-		fmt.Fprint(e.out, articleTemplate(first(*title, "标题"), *author, e.cfg.Defaults, e.cfg.Theme))
+		fmt.Fprint(e.out, template(first(*title, "标题")))
 		return nil
 	}
 
@@ -126,12 +154,12 @@ func cmdNew(e *env, args []string) error {
 		path = fileNameFor(arg) + ".md"
 	}
 
-	if err := writeNew(path, articleTemplate(t, *author, e.cfg.Defaults, e.cfg.Theme), *force); err != nil {
+	if err := writeNew(path, template(t), *force); err != nil {
 		return err
 	}
 	abs, _ := filepath.Abs(path)
-	return e.result(map[string]any{"path": abs, "title": t},
-		fmt.Sprintf("已创建 %s\n替换正文、封面和示例图片后，运行 wxctl format %s 整理并检查", abs, path))
+	return e.result(map[string]any{"path": abs, "title": t, "article_type": m.articleType()},
+		fmt.Sprintf("已创建 %s\n替换示例文字和图片后，运行 wxctl format %s 整理并检查", abs, path))
 }
 
 // findCover 猜封面：同目录的 cover.*，否则正文第一张图片
@@ -151,7 +179,8 @@ func findCover(a *Article) string {
 // 没写的取配置默认值；开头的 # 标题移到 title。可重复执行。
 // 整理后对结果做提交前检查，有错误时文件照样写出，但退出码为 1
 func cmdFormat(e *env, args []string) error {
-	fs := newFlagSet(e, "format", "<file.md|-> [-o 输出文件|-] [--cover 封面] [--offline] [--strict] [--no-check]")
+	fs := newFlagSet(e, "format", "<file.md|-> [--type news|newspic] [-o 输出文件|-] [--cover 封面] [--offline] [--strict] [--no-check]")
+	typ := fs.String("type", "", "消息类型，优先于 frontmatter article_type，默认 news")
 	out := fs.String("o", "", "输出到另一个文件，- 为标准输出；默认原地改写")
 	cover := fs.String("cover", "", "封面图，默认取同目录 cover.* 或正文第一张图")
 	offline := fs.Bool("offline", false, "检查时不连服务端（跳过主题检查）")
@@ -165,9 +194,32 @@ func cmdFormat(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := a.Meta.setArticleType(*typ); err != nil {
+		return err
+	}
+	dst := first(*out, pos[0])
+	e.cfg.Defaults.apply(&a.Meta)
+	if a.Meta.articleType() == "newspic" {
+		if *cover != "" {
+			return usageError("newspic 使用 images 的第一张图作为封面，不支持 --cover")
+		}
+		a.collectNewspicImages()
+		if dst != "-" {
+			abs, err := filepath.Abs(dst)
+			if err != nil {
+				return err
+			}
+			if err := a.rebaseImages(filepath.Dir(abs)); err != nil {
+				return err
+			}
+		}
+	} else {
+		if len(a.Meta.Images) > 0 {
+			return usageError("news 不使用 images；请先将头信息中的图片移回正文，再切换为 news")
+		}
+		a.Meta.Cover = first(*cover, a.Meta.Cover, findCover(a))
+	}
 	m := a.Meta
-	e.cfg.Defaults.apply(&m)
-	m.Cover = first(*cover, m.Cover, findCover(a))
 	text := renderFront(m, first(m.Theme, e.cfg.Theme)) + "\n" + strings.TrimLeft(a.Markdown, "\r\n")
 
 	// 检查整理后的内容，行号对应写出的文件
@@ -178,7 +230,7 @@ func cmdFormat(e *env, args []string) error {
 			return err
 		}
 		var themes []string
-		if !*offline && e.cfg.Token != "" {
+		if m.articleType() == "news" && !*offline && e.cfg.Token != "" {
 			themes = e.fetchThemes(e.ctx)
 		}
 		if found := CheckArticle(fa, themes); found != nil {
@@ -186,7 +238,6 @@ func cmdFormat(e *env, args []string) error {
 		}
 	}
 
-	dst := first(*out, pos[0])
 	if dst == "-" {
 		if _, err := io.WriteString(e.out, text); err != nil {
 			return err
@@ -204,7 +255,7 @@ func cmdFormat(e *env, args []string) error {
 	abs, _ := filepath.Abs(dst)
 	failed := countLevel(issues, levelError) > 0 || (*strict && len(issues) > 0)
 	if e.json {
-		if err := e.writeJSON(map[string]any{"ok": !failed, "path": abs, "title": m.Title, "cover": m.Cover, "issues": issues}); err != nil {
+		if err := e.writeJSON(map[string]any{"ok": !failed, "path": abs, "title": m.Title, "cover": m.Cover, "article_type": m.articleType(), "image_count": len(m.Images), "issues": issues}); err != nil {
 			return err
 		}
 		if failed {

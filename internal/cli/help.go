@@ -53,21 +53,25 @@ var docs = map[string]cmdDoc{
 		summary: "创建带 frontmatter 的文章模板",
 		details: "参数是标题时，在当前目录生成 <标题>.md；以 .md 结尾或带目录时按路径处理（标题取文件名）。\n" +
 			"作者、评论设置取配置 defaults（wxctl config set 设置）。不覆盖已有文件（除非 --force）；传 - 输出到标准输出。\n" +
-			"模板里的示例文字和 images/example.png 没替换时，format 会报错。",
-		examples: []string{"wxctl new 我的新文章", "wxctl new wx/post.md --title 标题 --author 作者", "wxctl new - > post.md"},
+			"模板里的示例文字和 images/example.png 没替换时，format 会报错。\n" +
+			"--type newspic 生成图片消息模板；未指定时默认图文 news。",
+		examples: []string{"wxctl new 我的新文章", "wxctl new wx/post.md --title 标题 --author 作者", "wxctl new - > post.md", "wxctl new 摄影记录 --type newspic"},
 		output:   `{"ok":true,"path":"/abs/我的新文章.md","title":"我的新文章"}`,
 	},
 	"format": {
 		summary: "整理成带完整 frontmatter 的文章，并做提交前检查",
 		details: "已有 frontmatter 字段保留；没写的取配置 defaults；开头的 # 标题移到 title，否则用文件名。\n" +
-			"封面：--cover > frontmatter cover > 同目录 cover.* > 正文第一张图。\n" +
+			"类型：--type > frontmatter article_type > news。newspic 将正文图片按顺序移入 images，正文按纯文本提交。\n" +
+			"images 支持绝对路径、相对文章目录的路径、http(s) URL 和 media_id:永久素材ID；首张为封面，1-20 张。\n" +
+			"已有 images 保留顺序，新图片追加；同一来源不重复追加，代码中的图片示例不提取。\n" +
+			"图文封面：--cover > frontmatter cover > 同目录 cover.* > 正文第一张图。\n" +
 			"默认原地改写（可重复执行），-o 写到另一个文件，-o - 输出到标准输出（检查结果写 stderr）。\n" +
 			"整理后检查结果，不上传任何东西。错误（error）会导致 draft 失败，必须修；警告（warning）只是提醒。\n" +
 			"检查项：标题/作者/摘要长度（32/16/128 字）、封面和正文图片是否存在且能压到限制以内、\n" +
 			"模板残留、主题名、阅读原文链接、``` 是否成对、未知 frontmatter 字段、\n" +
 			"HTML 标签（会按文字显示）、外部链接（公众号里不能点）、正文里重复的一级标题。\n" +
 			"退出码：0 通过；1 有错误（或 --strict 时有警告），文件仍会写出。--no-check 只整理不检查。",
-		examples: []string{"wxctl format notes.md", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format post.md --strict", "wxctl --json format post.md --offline"},
+		examples: []string{"wxctl format notes.md", "wxctl format 摄影记录.md --type newspic", "wxctl format notes.md -o post.md --cover cover.png", "wxctl format post.md --strict", "wxctl --json format post.md --offline"},
 		output:   `{"ok":false,"path":"/abs/notes.md","title":"...","cover":"cover.png","issues":[{"level":"error","line":5,"field":"cover","message":"图片不存在：..."}]}`,
 	},
 	"render": {
@@ -77,18 +81,22 @@ var docs = map[string]cmdDoc{
 		output:   `{"ok":true,"title":"...","html":"<section ...>"}`,
 	},
 	"draft": {
-		summary: "上传图片和封面，新建或更新草稿",
+		summary: "上传图片，新建或更新图文 / 图片草稿",
 		details: "流程：检查（与 format 相同，有错误就停止，什么都不上传）→ 上传正文图片并替换地址 → 上传封面 → 新建/更新草稿。\n" +
-			"有 --media-id 或 frontmatter media_id 时更新，否则新建。新建必须有封面（cover / --cover / --thumb）。\n" +
+			"类型：--type > frontmatter article_type > news；图文要求封面（cover / --cover / --thumb）。\n" +
+			"newspic 使用 images 的有序图片列表，上传为永久素材，正文不渲染 HTML，不使用封面或主题参数。\n" +
+			"正文还有图片时，请先 format --type newspic；--no-check 也不会跳过类型、图片数量和来源结构检查。\n" +
+			"有 --media-id 或 frontmatter media_id 时更新，否则新建；更新前校验远端类型，不支持跨类型更新。\n" +
 			"图片按内容 hash 缓存，重复提交不会重复上传。参数优先于 frontmatter。\n" +
-			"文件提交成功后自动把 media_id 写回原文件的 frontmatter，下次提交会更新同一篇；标准输入不回写。",
+			"文件提交成功后自动把 media_id 和被 --type 覆盖的类型写回原文件，下次提交会更新同一篇；标准输入不回写。",
 		examples: []string{
 			"wxctl draft post.md",
+			"wxctl draft 摄影记录.md --publish",
 			"wxctl draft post.md --media-id <media_id>",
 			"wxctl draft post.md --thumb <永久素材 media_id>",
 			"cat post.md | wxctl --mode server draft - --cover /data/cover.png",
 		},
-		output: `{"ok":true,"action":"created|updated","media_id":"...","title":"...","thumb_media_id":"...","publish_id":"（仅 --publish）"}`,
+		output: `{"ok":true,"action":"created|updated","media_id":"...","title":"...","article_type":"news|newspic","thumb_media_id":"（仅 news）","image_count":"（仅 newspic）","publish_id":"（仅 --publish）"}`,
 	},
 	"drafts": {
 		summary:  "列出草稿的 media_id 和标题",
@@ -144,12 +152,16 @@ wxctl 负责读文件、上传图片、组装请求。
 ## frontmatter 字段
 title（≤32 字）、author（≤16 字）、digest（≤128 字）、cover（封面路径或 URL，新建必填）、
 theme（主题名，或本地 .css 文件，相对路径以文章所在目录为准）、source_url、media_id、open_comment、fans_comment。
+article_type：news（默认图文）或 newspic（图片消息）；命令 --type 优先于头信息。
+images：图片消息的有序列表，每项是绝对/相对路径、http(s) URL 或 media_id:永久素材ID，1-20 张。
+图片消息先运行 format post.md --type newspic，将正文图片移入 images；首张为封面，正文按纯文本提交，忽略主题。
 没有 title 时用正文开头的 # 标题（并从正文移除），再没有就用文件名。
 
 ## 写作注意
 - 图片只用 ![说明](路径) 语法，HTML 标签会按文字原样显示。
 - 外部链接在公众号里不能点击，需要的话写成文字或放到 source_url。
-- 本地、外链图片都会自动上传并压缩（正文图 <1MB，封面 <10MB）。
+- 本地图片支持绝对路径；含空格时用 ![说明](</完整路径/my photo.png>)。
+- 本地、外链图片都会自动上传并压缩（正文图 <1MB，封面及图片消息的永久素材 <10MB）。
 
 ## 需要先征得用户同意的操作
 - publish、draft --publish：发布后粉丝可见，不能撤回。

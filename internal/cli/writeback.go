@@ -12,6 +12,10 @@ import (
 
 // saveMediaID 只修改 frontmatter，保留正文、BOM、换行格式和文件权限。
 func (a *Article) saveMediaID(id string) error {
+	return a.saveDraftMeta(id, false)
+}
+
+func (a *Article) saveDraftMeta(id string, saveType bool) error {
 	path, err := filepath.EvalSymlinks(a.Path)
 	if err != nil {
 		return err
@@ -61,6 +65,21 @@ func (a *Article) saveMediaID(id string) error {
 		if !found {
 			mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "media_id"}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: id})
 		}
+		if saveType {
+			found := false
+			for i := 0; i < len(mapping.Content); i += 2 {
+				if mapping.Content[i].Value == "article_type" {
+					value := mapping.Content[i+1]
+					value.Kind, value.Tag, value.Value, value.Style = yaml.ScalarNode, "!!str", a.Meta.articleType(), 0
+					value.Content = nil
+					found = true
+					break
+				}
+			}
+			if !found {
+				mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "article_type"}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: a.Meta.articleType()})
+			}
+		}
 		var front bytes.Buffer
 		enc := yaml.NewEncoder(&front)
 		enc.SetIndent(2)
@@ -80,6 +99,9 @@ func (a *Article) saveMediaID(id string) error {
 			return err
 		}
 		out = []byte("---" + newline + "media_id: " + strings.TrimSpace(string(value)) + newline + "---" + newline)
+		if saveType {
+			out = []byte("---" + newline + "media_id: " + strings.TrimSpace(string(value)) + newline + "article_type: " + a.Meta.articleType() + newline + "---" + newline)
+		}
 		out = append(out, data...)
 	}
 	out = append(append([]byte(nil), bom...), out...)

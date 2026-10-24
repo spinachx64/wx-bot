@@ -13,3 +13,7 @@ body {
 }
 img { max-width: 100% !important; height: auto !important; }
 a { color: #576b95; }
+.newspic-images figure { margin: 0 0 16px; }
+.newspic-images img { display: block; width: 100%; min-height: 40px; }
+.newspic-images figcaption { color: #888; font-size: 12px; text-align: center; }
+.newspic-text { white-space: pre-wrap; padding: 0 16px; }

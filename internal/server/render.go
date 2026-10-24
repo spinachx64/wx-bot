@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"wx-bot/internal/render"
 )
@@ -63,12 +65,49 @@ func (s *Server) writeRenderError(w http.ResponseWriter, err error) {
 // 其余字段原样透传给微信
 func (s *Server) renderArticle(raw json.RawMessage) (json.RawMessage, error) {
 	var art map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &art); err != nil {
+	if err := json.Unmarshal(raw, &art); err != nil || art == nil {
 		return nil, errBadArticle
+	}
+	typ := "news"
+	if v, ok := art["article_type"]; ok {
+		if string(v) == "null" || json.Unmarshal(v, &typ) != nil || (typ != "news" && typ != "newspic") {
+			return nil, fmt.Errorf("%w: article_type must be news or newspic", errBadArticle)
+		}
 	}
 	// 没有显式指定时默认打开评论
 	if _, ok := art["need_open_comment"]; !ok {
 		art["need_open_comment"] = json.RawMessage("1")
+	}
+	if typ == "newspic" {
+		for _, key := range []string{"markdown", "theme", "theme_css", "thumb_media_id"} {
+			if _, ok := art[key]; ok {
+				return nil, fmt.Errorf("%w: newspic does not support %s", errBadArticle, key)
+			}
+		}
+		var title, content string
+		if json.Unmarshal(art["title"], &title) != nil || strings.TrimSpace(title) == "" || utf8.RuneCountInString(title) > 32 {
+			return nil, fmt.Errorf("%w: newspic title must contain 1-32 characters", errBadArticle)
+		}
+		if string(art["content"]) == "null" || json.Unmarshal(art["content"], &content) != nil {
+			return nil, fmt.Errorf("%w: newspic content must be a string", errBadArticle)
+		}
+		if len(content) >= 1<<20 || utf8.RuneCountInString(content) >= 20000 {
+			return nil, fmt.Errorf("%w: newspic content must be less than 20000 characters and 1MB", errBadArticle)
+		}
+		var images struct {
+			List []struct {
+				ID string `json:"image_media_id"`
+			} `json:"image_list"`
+		}
+		if json.Unmarshal(art["image_info"], &images) != nil || len(images.List) < 1 || len(images.List) > 20 {
+			return nil, fmt.Errorf("%w: newspic image_info.image_list must contain 1-20 items", errBadArticle)
+		}
+		for _, image := range images.List {
+			if strings.TrimSpace(image.ID) == "" {
+				return nil, fmt.Errorf("%w: image_media_id must be a non-empty string", errBadArticle)
+			}
+		}
+		return marshalNoEscape(art)
 	}
 	mdRaw, ok := art["markdown"]
 	if !ok {

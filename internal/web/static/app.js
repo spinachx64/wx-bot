@@ -318,8 +318,10 @@ function renderDrafts(alive) {
     list.innerHTML = items.map((it) => {
       const news = it.content?.news_item || [];
       const a = news[0] || {};
+      const newspic = a.article_type === 'newspic';
+      const cover = a.thumb_url || a.image_info?.image_list?.[0]?.image_url || a.image_info?.image_list?.[0]?.url;
       return `<a class="draft-card" data-draft="${esc(it.media_id)}" href="#/drafts/${encodeURIComponent(it.media_id)}">
-        <div class="cover"><span class="cover-label">草稿 · DRAFT</span>${a.thumb_url ? `<img src="${esc(https(a.thumb_url))}" alt="" loading="lazy">` : ''}</div>
+        <div class="cover"><span class="cover-label">${newspic ? '图片消息' : '草稿 · DRAFT'}</span>${cover ? `<img src="${esc(https(cover))}" alt="" loading="lazy">` : ''}</div>
         <div class="body">
           <h3>${esc(a.title || '（无标题）')}</h3>
           ${a.digest ? `<p class="digest">${esc(a.digest)}</p>` : ''}
@@ -368,6 +370,44 @@ function fixContent(html) {
 const frameDoc = (html) => `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
   <link rel="stylesheet" href="preview.css"></head><body>${html}</body></html>`;
 
+// 素材下载需要认证头，下载后用 blob URL 显示；令牌不进入图片 URL。
+const draftImageURLs = new Set();
+function clearDraftImages() {
+  for (const url of draftImageURLs) URL.revokeObjectURL(url);
+  draftImageURLs.clear();
+}
+
+function newspicContent(article) {
+  const images = article.image_info?.image_list || [];
+  return `<div class="newspic-images">${images.map((image, i) => {
+    const url = https(image.image_url || image.url);
+    const src = /^https?:\/\//.test(url) ? ` src="${esc(url)}"` : '';
+    return `<figure><img${src} data-material-id="${esc(image.image_media_id || '')}" alt="图片 ${i + 1}" referrerpolicy="no-referrer"><figcaption>第 ${i + 1} 张</figcaption></figure>`;
+  }).join('')}</div><div class="newspic-text">${esc(article.content || '')}</div>`;
+}
+
+async function loadDraftImage(img, alive) {
+  if (img.hasAttribute('src') || !img.dataset.materialId) return;
+  try {
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(img.dataset.materialId)}`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!response.ok) {
+      let data = {};
+      try { data = await response.json(); } catch {}
+      throw toError(response.status, data);
+    }
+    const blob = await response.blob();
+    if (!alive()) return;
+    if (!blob.type.startsWith('image/')) throw new Error('素材未返回图片');
+    const url = URL.createObjectURL(blob);
+    draftImageURLs.add(url);
+    img.src = url;
+  } catch (err) {
+    if (alive()) img.alt = '图片加载失败：' + err.message;
+  }
+}
+
 // autoHeight iframe 高度跟随内容（图片加载后也会变高），整页只有一个滚动条。
 // 量 body 而不是 documentElement：后者不会小于 iframe 当前高度，内容变短时缩不回去
 function autoHeight(frame) {
@@ -387,6 +427,7 @@ let previewSeq = 0;
 const previewDialog = $('#draft-preview');
 function closeDraftPreview() {
   ++previewSeq;
+  clearDraftImages();
   if (previewDialog.open) previewDialog.close();
   $('#preview-content').replaceChildren();
   document.body.classList.remove('preview-open');
@@ -401,12 +442,14 @@ $('#close-preview').addEventListener('click', closeDraftPreview);
 previewDialog.addEventListener('click', (e) => { if (e.target === previewDialog) closeDraftPreview(); });
 previewDialog.addEventListener('close', () => {
   ++previewSeq;
+  clearDraftImages();
   document.body.classList.remove('preview-open');
   $('#preview-content').replaceChildren();
   if (!location.hash.replace(/^#\/?/, '').split('/')[1]) setTitle('草稿箱');
 });
 
 function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
+  clearDraftImages();
   const guard = async (alive, fn) => {
     try { await fn(); } catch (err) {
       if (!alive() || err.status === 401) return;
@@ -456,7 +499,17 @@ function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
     setTitle(news[0].title);
 
     const frame = $('iframe', view);
+    let imageSeq = 0;
+    frame.addEventListener('load', () => {
+      const seq = imageSeq;
+      const doc = frame.contentDocument;
+      doc?.querySelectorAll('[data-material-id]').forEach((img) => {
+        loadDraftImage(img, () => alive() && seq === imageSeq && frame.contentDocument === doc);
+      });
+    });
     const show = (i) => {
+      ++imageSeq;
+      clearDraftImages();
       idx = i;
       $('.phone', view).scrollTop = 0;
       const a = news[i];
@@ -467,8 +520,9 @@ function renderDraft(mediaId, alive, view = document.querySelector('#view')) {
         t.setAttribute('aria-selected', String(Number(t.dataset.idx) === i)));
       view.querySelectorAll('[data-idx]').forEach((t) =>
         Number(t.dataset.idx) === i ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
-      frame.srcdoc = frameDoc(fixContent(a.content));
+      frame.srcdoc = frameDoc(a.article_type === 'newspic' ? newspicContent(a) : fixContent(a.content));
       $('#info').innerHTML = `
+        <dt>类型</dt><dd>${a.article_type === 'newspic' ? `图片消息 · ${a.image_info?.image_list?.length || 0} 张` : '图文消息'}</dd>
         <dt>作者</dt><dd>${esc(a.author || '未填写')}</dd>
         <dt>摘要</dt><dd>${esc(a.digest || '未填写')}</dd>
         <dt>评论</dt><dd>${a.need_open_comment ? (a.only_fans_can_comment ? '已开启，仅粉丝可评论' : '已开启') : '未开启'}</dd>

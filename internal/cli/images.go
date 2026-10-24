@@ -43,9 +43,10 @@ type Uploader struct {
 func NewUploader(c *Client, cfg *Config) *Uploader {
 	return &Uploader{
 		client: c,
-		cache:  &imageCache{path: filepath.Join(cfg.CacheDir, "images.json"), server: cfg.URL},
-		hc:     &http.Client{Timeout: 60 * time.Second},
-		Log:    func(string, ...any) {},
+		// token 指纹用于隔离同一服务下的不同公众号，不把 token 明文写入缓存。
+		cache: &imageCache{path: filepath.Join(cfg.CacheDir, "images.json"), server: cfg.URL + "|" + hash([]byte(cfg.Token))},
+		hc:    &http.Client{Timeout: 60 * time.Second},
+		Log:   func(string, ...any) {},
 	}
 }
 
@@ -96,25 +97,86 @@ func (u *Uploader) ContentImage(ctx context.Context, a *Article, src string) (st
 
 // Cover 上传封面为永久图片素材，返回 media_id
 func (u *Uploader) Cover(ctx context.Context, a *Article, src string) (string, error) {
+	return u.MaterialImage(ctx, a, src)
+}
+
+type preparedMaterial struct {
+	src, id, key, name string
+	data               []byte
+}
+
+func (u *Uploader) prepareMaterial(ctx context.Context, a *Article, src string) (preparedMaterial, error) {
+	p := preparedMaterial{src: src}
+	kind, value, err := imageSource(src)
+	if err != nil {
+		return p, err
+	}
+	if kind == "media_id" {
+		p.id = value
+		return p, nil
+	}
 	data, name, err := u.load(ctx, a, src)
 	if err != nil {
-		return "", err
+		return p, err
 	}
-	key := "cover:" + hash(data)
-	if v := u.cache.get(key); v != "" {
-		u.Log("cached  cover %s", src)
-		return v, nil
+	p.key = "material:image:" + hash(data)
+	if p.id = u.cache.get(p.key); p.id != "" {
+		return p, nil
 	}
-	data, name, err = fitImage(data, name, maxCoverImage)
+	if _, _, err := image.DecodeConfig(bytes.NewReader(data)); err != nil {
+		return p, fmt.Errorf("unsupported image: %w", err)
+	}
+	p.data, p.name, err = fitImage(data, name, maxCoverImage)
+	return p, err
+}
+
+func (u *Uploader) uploadMaterial(ctx context.Context, p preparedMaterial) (string, error) {
+	if p.id != "" {
+		return p.id, nil
+	}
+	// 同一批次里相同文件只上传一次。
+	if id := u.cache.get(p.key); id != "" {
+		return id, nil
+	}
+	id, err := u.client.AddMaterial(ctx, "image", p.name, p.data)
 	if err != nil {
 		return "", err
 	}
-	id, err := u.client.AddMaterial(ctx, "image", name, data)
+	if id == "" {
+		return "", fmt.Errorf("material upload: empty media_id")
+	}
+	u.Log("upload  material %s -> %s", p.src, id)
+	return id, u.cache.put(p.key, id)
+}
+
+// MaterialImage 上传永久图片素材；本地绝对路径、相对路径、URL 和已有素材 ID 均可用。
+func (u *Uploader) MaterialImage(ctx context.Context, a *Article, src string) (string, error) {
+	p, err := u.prepareMaterial(ctx, a, src)
 	if err != nil {
 		return "", err
 	}
-	u.Log("upload  cover %s -> %s", src, id)
-	return id, u.cache.put(key, id)
+	return u.uploadMaterial(ctx, p)
+}
+
+// MaterialImages 先读取、下载、校验并压缩全部图片，再进行任何上传。
+func (u *Uploader) MaterialImages(ctx context.Context, a *Article) ([]string, error) {
+	prepared := make([]preparedMaterial, len(a.Meta.Images))
+	for i, src := range a.Meta.Images {
+		p, err := u.prepareMaterial(ctx, a, src)
+		if err != nil {
+			return nil, fmt.Errorf("images[%d] %s: %w", i, src, err)
+		}
+		prepared[i] = p
+	}
+	ids := make([]string, len(prepared))
+	for i, p := range prepared {
+		id, err := u.uploadMaterial(ctx, p)
+		if err != nil {
+			return nil, fmt.Errorf("images[%d] %s: %w", i, p.src, err)
+		}
+		ids[i] = id
+	}
+	return ids, nil
 }
 
 // load 读取本地文件或下载外链图片

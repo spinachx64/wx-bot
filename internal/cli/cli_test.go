@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
@@ -23,11 +24,12 @@ const testToken = "tk-123456789"
 
 // mockAPI 模拟 wx-bot 服务，记录上传次数和最后一次草稿请求
 type mockAPI struct {
-	mu        sync.Mutex
-	uploads   int
-	covers    int
-	lastDraft map[string]any
-	draftPath string
+	mu              sync.Mutex
+	uploads         int
+	covers          int
+	lastDraft       map[string]any
+	draftPath       string
+	uniqueMaterials bool
 }
 
 func (m *mockAPI) server(t *testing.T) *httptest.Server {
@@ -50,7 +52,11 @@ func (m *mockAPI) server(t *testing.T) *httptest.Server {
 			if r.FormValue("type") != "image" {
 				t.Errorf("cover type = %q", r.FormValue("type"))
 			}
-			w.Write([]byte(`{"media_id":"THUMB"}`))
+			id := "THUMB"
+			if m.uniqueMaterials {
+				id = fmt.Sprintf("MATERIAL%d", m.covers)
+			}
+			json.NewEncoder(w).Encode(map[string]string{"media_id": id})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/drafts":
 			if q := r.URL.Query(); q.Get("no_content") != "true" || q.Get("offset") != "2" || q.Get("count") != "5" {
 				t.Errorf("drafts query = %s", r.URL.RawQuery)
@@ -60,6 +66,16 @@ func (m *mockAPI) server(t *testing.T) *httptest.Server {
 				{"media_id":"M2","content":{"news_item":[{"title":"甲"},{"title":"乙"}]},"update_time":2}]}`))
 		case strings.HasPrefix(r.URL.Path, "/api/v1/drafts") && strings.HasSuffix(r.URL.Path, "/publish"):
 			w.Write([]byte(`{"errcode":0,"publish_id":2247483}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/drafts/"):
+			typ := "news"
+			if m.lastDraft != nil {
+				if arts, ok := m.lastDraft["articles"].([]any); ok {
+					typ, _ = arts[0].(map[string]any)["article_type"].(string)
+				} else if art, ok := m.lastDraft["articles"].(map[string]any); ok {
+					typ, _ = art["article_type"].(string)
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"news_item": []any{map[string]string{"article_type": typ}}})
 		case strings.HasPrefix(r.URL.Path, "/api/v1/drafts"):
 			m.draftPath = r.Method + " " + r.URL.Path
 			var body map[string]any

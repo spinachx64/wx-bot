@@ -35,7 +35,7 @@ const usage = `wxctl — wx-bot 命令行
   new    <标题|file.md|-> 创建带 frontmatter 的文章模板，默认值取自配置
   format <md|->         整理成带 frontmatter 的文章并做提交前检查（-o 指定输出，--strict 警告也算失败）
   render <md|->         渲染 markdown 为 HTML
-  draft  <md|->         上传图片、封面，新建或更新草稿
+  draft  <md|->         上传图片，新建或更新草稿（--type news|newspic，默认 news）
   drafts                列出草稿的 media_id 和标题（--offset / --count）
   publish <media_id>    发布草稿
   status <publish_id>   查询发布状态

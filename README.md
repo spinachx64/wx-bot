@@ -5,6 +5,7 @@
 ## 能做什么
 
 - 用 Markdown 写文章，套用主题渲染成公众号排版，一条命令建成草稿或直接发布
+- 支持图片消息（newspic）：按平时习惯在正文引用图片、写文字，format 自动把图片移入头信息
 - 正文图片、封面自动上传和压缩，同一张图不重复上传
 - Web 面板：卡片式草稿箱，点击浮层直接查看手机尺寸预览，关闭后保留列表位置；支持发布、删除，素材库查看总数、上传、删除
 - 多公众号（多租户）：每个公众号独立 token，secret 加密存储，图片互相隔离
@@ -58,3 +59,52 @@ wxctl publish <media_id>          # 发布（粉丝可见，不可撤回）
 ```
 
 更多命令和参数：`wxctl help`，给脚本或 agent 调用：`wxctl help agent`。
+
+### 图片消息
+
+默认类型仍是图文 `news`。图片消息可以直接写普通 Markdown，图片支持绝对路径和相对文章目录的路径：
+
+```markdown
+# 周末摄影记录
+
+今天拍下的几个瞬间。
+
+![街景](/Users/me/Pictures/01.jpg)
+
+这张是在傍晚拍的。
+
+![落日](images/02.jpg)
+```
+
+```bash
+wxctl new 摄影记录 --type newspic # 可选：先创建图片消息模板
+wxctl format 摄影记录.md --type newspic
+wxctl draft 摄影记录.md           # 之后按文件中的 article_type 创建或更新
+wxctl publish <media_id>          # 提交发布，再用 status 查询最终结果
+```
+
+`format` 按出现顺序把正文图片移到 `images`，留下文字并整理空行：
+
+```yaml
+---
+article_type: newspic
+title: 周末摄影记录
+images:
+  - /Users/me/Pictures/01.jpg
+  - images/02.jpg
+open_comment: true
+fans_comment: false
+---
+
+今天拍下的几个瞬间。
+
+这张是在傍晚拍的。
+```
+
+- 类型优先级：`--type` > frontmatter `article_type` > `news`。再次 format 无需重复指定类型。
+- `images` 每项统一为字符串：本地绝对/相对路径、`http(s)` URL，或 `media_id:永久素材ID`。含空格的正文图片路径用 `![说明](</完整路径/my photo.jpg>)`。
+- 图片数量为 1～20 张，第一张即封面。已有列表保留顺序，新引用的图片追加；重复 format 不重复追加，代码示例中的图片不提取。
+- 图片上传为永久素材，按公众号凭证和文件内容缓存；微信图床 URL 也需要取得永久素材 ID。
+- 正文按纯文本提交，保留换行，Markdown 标记不排版；图片消息不使用 CSS 主题、独立封面或 `render`。
+- `format -o 其他目录/post.md` 会调整图片相对路径，绝对路径保持原样。
+- 更新前校验远端草稿类型；需要切换类型时新建草稿。发布是否成功以 `wxctl status <publish_id>` 的最终结果为准。

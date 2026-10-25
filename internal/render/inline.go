@@ -249,13 +249,22 @@ func unescapeCSS(s string) string {
 	return b.String()
 }
 
-// cleanup 内联之后做微信兼容处理：去掉 id/class 等辅助属性，修正代码块
+// cleanup 内联之后做微信兼容处理：清理列表空白，去掉辅助属性，修正代码块
 func cleanup(root *html.Node) {
 	removeAttr(root, "id")
 	var walk func(n *html.Node)
 	walk = func(n *html.Node) {
 		for c := n.FirstChild; c != nil; {
 			next := c.NextSibling
+			// 微信编辑器会把 ol/ul 的空白子节点当成空列表项，
+			// 导致 4 项变成 9 项、正文落在 2/4/6/8。只清理列表的直接
+			// 空白子节点，保留 li 正文中的词间空格、段落和代码缩进。
+			if (n.DataAtom == atom.Ol || n.DataAtom == atom.Ul) &&
+				c.Type == html.TextNode && strings.TrimSpace(c.Data) == "" {
+				n.RemoveChild(c)
+				c = next
+				continue
+			}
 			if c.Type != html.ElementNode {
 				c = next
 				continue

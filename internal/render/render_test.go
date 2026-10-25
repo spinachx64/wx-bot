@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 var styleAttrRe = regexp.MustCompile(` style="[^"]*"`)
@@ -46,6 +49,73 @@ func TestMultiItemOlKept(t *testing.T) {
 	out := styleAttrRe.ReplaceAllString(mustRender(t, r, "1. x\n2. y\n", ""), "")
 	if !strings.Contains(out, "<ol>") || strings.Count(out, "<li>") != 2 {
 		t.Fatalf("multi-item ol changed: %s", out)
+	}
+}
+
+func TestListsHaveOnlyItemChildren(t *testing.T) {
+	r := newTestRenderer(t, "")
+	for _, tc := range []struct {
+		name, markdown string
+		items          []int
+	}{
+		{"ordered", "1. Anthropic\n2. OpenAI\n3. Hugging Face\n4. 阿里\n\n正文\n\n1. 规范\n2. 安全\n3. 评估\n", []int{4, 3}},
+		{"unordered", "- 第一项\n- 第二项\n", []int{2}},
+		{"nested", "1. 第一项\n   - 子项一\n   - 子项二\n2. 第二项\n", []int{2, 2}},
+		{"loose", "1. 第一段\n\n   第二段\n\n2. 第二项\n", []int{2}},
+		{"tasks", "- [x] 已完成\n- [ ] 待完成\n", []int{2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := mustRender(t, r, tc.markdown, "")
+			doc, err := html.Parse(strings.NewReader(out))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var lists int
+			var walk func(*html.Node)
+			walk = func(n *html.Node) {
+				if n.DataAtom == atom.Ol || n.DataAtom == atom.Ul {
+					var count int
+					for c := n.FirstChild; c != nil; c = c.NextSibling {
+						// 微信编辑器会把列表内的空白文本节点也当作列表项。
+						if c.Type != html.ElementNode || c.DataAtom != atom.Li {
+							t.Fatalf("non-item child in list: type=%v data=%q\n%s", c.Type, c.Data, out)
+						}
+						count++
+					}
+					if lists >= len(tc.items) || count != tc.items[lists] {
+						t.Fatalf("list %d has %d items, want %v: %s", lists, count, tc.items, out)
+					}
+					lists++
+				}
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
+			}
+			walk(doc)
+			if lists != len(tc.items) {
+				t.Fatalf("got %d lists, want %d: %s", lists, len(tc.items), out)
+			}
+		})
+	}
+}
+
+func TestListCleanupPreservesContentWhitespace(t *testing.T) {
+	doc, err := html.Parse(strings.NewReader("<ol> \t\r\n<li><strong>first</strong> <em>second</em><pre>  code\n  next</pre></li> \n<li>third</li>\t </ol>"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup(doc)
+	var out strings.Builder
+	if err := html.Render(&out, doc); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "<ol><li>") || !strings.Contains(out.String(), "</li><li>third</li></ol>") {
+		t.Fatalf("list whitespace not removed: %s", out.String())
+	}
+	for _, want := range []string{"</strong> <em>", "<pre>  code\n  next</pre>"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("content whitespace lost: want %q in %s", want, out.String())
+		}
 	}
 }
 
